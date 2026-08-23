@@ -1,0 +1,10 @@
+{
+  "name": "SF Site",
+  "description": "Khu SmartFarm tổng, liên kết Field, Gateway, bơm và cụm phân phối.",
+  "image": null,
+  "defaultRuleChainId": null,
+  "defaultDashboardId": null,
+  "defaultQueueName": null,
+  "defaultEdgeRuleChainId": null,
+  "default": false
+}

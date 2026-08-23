@@ -1,0 +1,42 @@
+{
+  "transportMode": "GATEWAY",
+  "gateway": {
+    "name": "[TEST] SmartFarm Pi Gateway",
+    "profile": "SF Gateway",
+    "hostEnv": "COREIOT_MQTT_HOST",
+    "portEnv": "COREIOT_MQTT_PORT",
+    "tokenEnv": "COREIOT_GATEWAY_TOKEN",
+    "tlsEnv": "COREIOT_MQTT_TLS"
+  },
+  "devices": [
+    {"name": "[TEST] SI Soil Moisture 1", "profile": "SI Soil Moisture Sensor v2.2", "zoneId": "field-1"},
+    {"name": "[TEST] SI Soil Moisture 2", "profile": "SI Soil Moisture Sensor v2.2", "zoneId": "field-1"},
+    {"name": "[TEST] SI Soil Moisture 3", "profile": "SI Soil Moisture Sensor v2.2", "zoneId": "field-1"},
+    {"name": "[TEST] SI Soil Moisture 4", "profile": "SI Soil Moisture Sensor v2.2", "zoneId": "field-1"},
+    {"name": "[TEST] SI Smart Valve 1", "profile": "SI Smart Valve v2.2", "zoneId": "field-1"},
+    {"name": "[TEST] SI Water Meter 1", "profile": "SI Water Meter v2.2", "zoneId": "field-1"},
+    {"name": "[TEST] SF Env Sensor 1", "profile": "SF Env Sensor Cluster", "zoneId": "field-1"},
+    {"name": "[TEST] SI Soil Moisture 5", "profile": "SI Soil Moisture Sensor v2.2", "zoneId": "field-2"},
+    {"name": "[TEST] SI Soil Moisture 6", "profile": "SI Soil Moisture Sensor v2.2", "zoneId": "field-2"},
+    {"name": "[TEST] SI Soil Moisture 7", "profile": "SI Soil Moisture Sensor v2.2", "zoneId": "field-2"},
+    {"name": "[TEST] SI Soil Moisture 8", "profile": "SI Soil Moisture Sensor v2.2", "zoneId": "field-2"},
+    {"name": "[TEST] SI Smart Valve 2", "profile": "SI Smart Valve v2.2", "zoneId": "field-2"},
+    {"name": "[TEST] SI Water Meter 2", "profile": "SI Water Meter v2.2", "zoneId": "field-2"},
+    {"name": "[TEST] SF Env Sensor 2", "profile": "SF Env Sensor Cluster", "zoneId": "field-2"},
+    {"name": "[TEST] SF Main Pump 1", "profile": "SF Pump Controller", "zoneId": "site"},
+    {"name": "[TEST] SF Manifold 1", "profile": "SF Manifold Controller", "zoneId": "site"}
+  ],
+  "simulation": {
+    "intervalSeconds": 5,
+    "seed": 20260803,
+    "maxConcurrentZones": 1,
+    "startMoisture": {"field-1": 24.0, "field-2": 48.0},
+    "thresholds": {
+      "minMoistureThreshold": 30,
+      "targetMoisture": 55,
+      "maxMoistureThreshold": 70,
+      "floodMoistureThreshold": 85,
+      "maxWaterPerCycle": 1000
+    }
+  }
+}

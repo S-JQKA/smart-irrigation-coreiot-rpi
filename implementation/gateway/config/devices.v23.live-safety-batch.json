@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "2.3-live-safety-batch",
+  "runtimeProfile": "SIM_TWO_FIELD",
+  "transportMode": "GATEWAY",
+  "controlAuthority": "LOCAL",
+  "localSchedules": [
+    {
+      "id": "live-tank-low-field-1",
+      "enabled": true,
+      "zoneId": "field-1",
+      "startAfterSeconds": 5,
+      "durationSeconds": 100
+    },
+    {
+      "id": "live-flow-fault-field-2",
+      "enabled": true,
+      "zoneId": "field-2",
+      "startAfterSeconds": 45,
+      "durationSeconds": 100
+    }
+  ],
+  "gateway": {
+    "name": "SmartFarm Pi Gateway",
+    "profile": "SF Gateway",
+    "hostEnv": "COREIOT_MQTT_HOST",
+    "portEnv": "COREIOT_MQTT_PORT",
+    "tokenEnv": "COREIOT_GATEWAY_TOKEN",
+    "tlsEnv": "COREIOT_MQTT_TLS"
+  },
+  "devices": [
+    {"name": "SI Soil Moisture 1", "profile": "SI Soil Moisture Sensor", "zoneId": "field-1"},
+    {"name": "SI Soil Moisture 2", "profile": "SI Soil Moisture Sensor", "zoneId": "field-1"},
+    {"name": "SI Soil Moisture 3", "profile": "SI Soil Moisture Sensor", "zoneId": "field-1"},
+    {"name": "SI Soil Moisture 4", "profile": "SI Soil Moisture Sensor", "zoneId": "field-1"},
+    {"name": "SI Smart Valve 1", "profile": "SI Smart Valve", "zoneId": "field-1"},
+    {"name": "SI Water Meter 1", "profile": "SI Water Meter", "zoneId": "field-1"},
+    {"name": "SF Env Sensor 1", "profile": "SF Env Sensor", "zoneId": "field-1"},
+    {"name": "SI Soil Moisture 5", "profile": "SI Soil Moisture Sensor", "zoneId": "field-2"},
+    {"name": "SI Soil Moisture 6", "profile": "SI Soil Moisture Sensor", "zoneId": "field-2"},
+    {"name": "SI Soil Moisture 7", "profile": "SI Soil Moisture Sensor", "zoneId": "field-2"},
+    {"name": "SI Soil Moisture 8", "profile": "SI Soil Moisture Sensor", "zoneId": "field-2"},
+    {"name": "SI Smart Valve 2", "profile": "SI Smart Valve", "zoneId": "field-2"},
+    {"name": "SI Water Meter 2", "profile": "SI Water Meter", "zoneId": "field-2"},
+    {"name": "SF Env Sensor 2", "profile": "SF Env Sensor", "zoneId": "field-2"},
+    {"name": "SF Main Pump 1", "profile": "SF Pump Controller", "zoneId": "site"},
+    {"name": "SF Manifold 1", "profile": "SF Manifold Controller", "zoneId": "site"}
+  ],
+  "simulation": {
+    "intervalSeconds": 5,
+    "seed": 20260808,
+    "maxConcurrentZones": 1,
+    "pulsesPerLiter": 450,
+    "manualOffLatchSeconds": 300,
+    "manualOnMaxSeconds": 300,
+    "flowGraceSeconds": 15,
+    "minimumFlowRate": 0.1,
+    "sensorStaleSeconds": 30,
+    "cloudLossTimeoutSeconds": 60,
+    "startMoisture": {"field-1": 20.0, "field-2": 20.0},
+    "controlModes": {"field-1": "MANUAL", "field-2": "MANUAL"},
+    "faultInjections": [
+      {"atIteration": 4, "action": "SET_TANK_LEVEL_PCT", "value": 5},
+      {"atIteration": 8, "action": "SET_TANK_LEVEL_PCT", "value": 70},
+      {"atIteration": 11, "action": "SET_FLOW_FAULT", "zoneId": "field-2"},
+      {"atIteration": 18, "action": "CLEAR_FLOW_FAULT", "zoneId": "field-2"},
+      {"atIteration": 20, "action": "DISCONNECT_CLOUD"},
+      {"atIteration": 36, "action": "RECONNECT_CLOUD"}
+    ],
+    "startEnvironment": {
+      "field-1": {"airTemp": 31.0, "airHumidity": 55.0, "lightLux": 24000},
+      "field-2": {"airTemp": 27.0, "airHumidity": 72.0, "lightLux": 12000}
+    },
+    "thresholds": {
+      "criticalMoisture": 15,
+      "minMoistureThreshold": 30,
+      "targetMoisture": 90,
+      "maxMoistureThreshold": 95,
+      "floodMoistureThreshold": 99,
+      "maxWaterPerCycle": 1000,
+      "maxWaterPerDay": 5000,
+      "maxDurationSec": 600,
+      "hotTemperatureC": 28,
+      "highVpdKpa": 1.5,
+      "highLightLux": 20000,
+      "startDebounceSamples": 2,
+      "floodDebounceSamples": 3
+    }
+  }
+}

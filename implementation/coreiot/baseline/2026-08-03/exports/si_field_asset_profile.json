@@ -1,0 +1,13 @@
+{
+  "name": "SI Field",
+  "description": "Smart Irrigation Field",
+  "image": null,
+  "defaultRuleChainId": {
+    "entityType": "RULE_CHAIN",
+    "id": "e46d2ca0-6b28-11f1-9dee-09c31de14de0"
+  },
+  "defaultDashboardId": null,
+  "defaultQueueName": null,
+  "defaultEdgeRuleChainId": null,
+  "default": false
+}

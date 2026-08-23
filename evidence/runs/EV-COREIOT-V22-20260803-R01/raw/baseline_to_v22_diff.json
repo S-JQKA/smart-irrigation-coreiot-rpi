@@ -1,0 +1,196 @@
+﻿{
+  "baselineDate": "2026-08-03",
+  "comparison": [
+    {
+      "component": "rule_chain:field",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/si_field_rule_chain.json",
+      "targetPath": "implementation/coreiot/v2.2/rule_chains/si_field_v2_2.json",
+      "baselineSha256": "276dff5f55ac8ee1e0ed75385f94a02450cc6ee10d10c31bef505a989e8deb69",
+      "targetSha256": "494d7007410af02594cc297fcb381d1859e7024810b8e4711231502a095c53e2",
+      "changed": true,
+      "baselineStats": {
+        "name": "SI Field",
+        "nodes": 30,
+        "connections": 31
+      },
+      "targetStats": {
+        "name": "SI Field v2.2",
+        "nodes": 37,
+        "connections": 37
+      }
+    },
+    {
+      "component": "rule_chain:soil",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/si_soil_moisture_rule_chain.json",
+      "targetPath": "implementation/coreiot/v2.2/rule_chains/si_soil_moisture_v2_2.json",
+      "baselineSha256": "6f6f9642a5e586ca562225c4ea13f72787b96d5813186f72360d8df70d1e9ac8",
+      "targetSha256": "e797d068f1e6f2ad68b676b82231b8ebd3ff1779d176321a3e342f35f727cbf4",
+      "changed": true,
+      "baselineStats": {
+        "name": "SI Soil Moisture",
+        "nodes": 17,
+        "connections": 21
+      },
+      "targetStats": {
+        "name": "SI Soil Moisture v2.2",
+        "nodes": 18,
+        "connections": 22
+      }
+    },
+    {
+      "component": "rule_chain:water",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/si_water_meter_rule_chain.json",
+      "targetPath": "implementation/coreiot/v2.2/rule_chains/si_water_meter_v2_2.json",
+      "baselineSha256": "f4990b56fc950633a154802b549ec2cb852d3c1cf2e2024e9e445a131941a773",
+      "targetSha256": "e606be1723e610fe1919e210129eac71199b4cf49db801f309d064e92bfbbc04",
+      "changed": true,
+      "baselineStats": {
+        "name": "SI Water Meter",
+        "nodes": 14,
+        "connections": 17
+      },
+      "targetStats": {
+        "name": "SI Water Meter v2.2",
+        "nodes": 15,
+        "connections": 18
+      }
+    },
+    {
+      "component": "rule_chain:valve",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/si_smart_valve_rule_chain.json",
+      "targetPath": "implementation/coreiot/v2.2/rule_chains/si_smart_valve_v2_2.json",
+      "baselineSha256": "af0bc870d80e7ac75c686f5cdafe0cbff91a52fe6fa9d8c60b3e0edffc46b1ff",
+      "targetSha256": "aad3d6ac29496b34e98567621a4504956bd82aeebb354a9befafb71dec4abec7",
+      "changed": true,
+      "baselineStats": {
+        "name": "SI Smart Valve",
+        "nodes": 8,
+        "connections": 11
+      },
+      "targetStats": {
+        "name": "SI Smart Valve v2.2",
+        "nodes": 9,
+        "connections": 12
+      }
+    },
+    {
+      "component": "rule_chain:alarm_count",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/si_count_alarms.json",
+      "targetPath": "implementation/coreiot/v2.2/rule_chains/si_count_alarms_v2_2.json",
+      "baselineSha256": "71147f6286ef88e3be40f42b1eafb7aec1844fcf617778d6e43ee338a81b2a92",
+      "targetSha256": "37d84cd0769e120208c7bdc0334f450f4c8a0fd5819b0bb8a1ad9aaaa1daf38a",
+      "changed": true,
+      "baselineStats": {
+        "name": "SI Count Alarms",
+        "nodes": 2,
+        "connections": 1
+      },
+      "targetStats": {
+        "name": "SI Count Alarms v2.2",
+        "nodes": 2,
+        "connections": 1
+      }
+    },
+    {
+      "component": "profile:soil",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/si_soil_moisture_device_profile.json",
+      "targetPath": "implementation/coreiot/v2.2/profiles/si_soil_moisture_sensor_v2_2.json",
+      "baselineSha256": "8774378b0652075b91337df114b9011bcb1cc0df93198b880109e95b3a618157",
+      "targetSha256": "456dbb6066570c2b72f7e4d01faace0abe869a619b17eb7e1115f5556cda8920",
+      "changed": true,
+      "baselineStats": {
+        "name": "SI Soil Moisture Sensor",
+        "alarms": 3
+      },
+      "targetStats": {
+        "name": "SI Soil Moisture Sensor v2.2",
+        "alarms": 5
+      }
+    },
+    {
+      "component": "profile:water",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/si_water_meter_device_profile.json",
+      "targetPath": "implementation/coreiot/v2.2/profiles/si_water_meter_v2_2.json",
+      "baselineSha256": "bfcefc8c5ddacccde6c119fa6f62f619eec713b68e6e60092df3f35225723455",
+      "targetSha256": "1357f9846b9201de60125cd51d718eacc1c68a084b847611e6b96269a07d44eb",
+      "changed": true,
+      "baselineStats": {
+        "name": "SI Water Meter",
+        "alarms": 1
+      },
+      "targetStats": {
+        "name": "SI Water Meter v2.2",
+        "alarms": 3
+      }
+    },
+    {
+      "component": "profile:valve",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/si_smart_valve_device_profile.json",
+      "targetPath": "implementation/coreiot/v2.2/profiles/si_smart_valve_v2_2.json",
+      "baselineSha256": "5bda5b8453ca5dfcf2793754ff83649f5719f20ef3f7a9c2127d9c7793d87bcd",
+      "targetSha256": "4f264fba1602ebfdaf96d169557fb21f92f7d412a8a401eb80e8d329a64556b9",
+      "changed": true,
+      "baselineStats": {
+        "name": "SI Smart Valve",
+        "alarms": 1
+      },
+      "targetStats": {
+        "name": "SI Smart Valve v2.2",
+        "alarms": 3
+      }
+    },
+    {
+      "component": "profile:field",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/si_field_asset_profile.json",
+      "targetPath": "implementation/coreiot/v2.2/profiles/si_field_asset_profile_v2_2.json",
+      "baselineSha256": "0c423c10ac5af5f4b58c35d34d29bf4d0c3ff2ac79e240d1bde398f5abad2c16",
+      "targetSha256": "b8e2417d16b5f082b0a77df76dd8c4349d74d5a9a7c0af269decc0cdb69bcd46",
+      "changed": true,
+      "baselineStats": {
+        "name": "SI Field"
+      },
+      "targetStats": {
+        "name": "SI Field v2.2"
+      }
+    },
+    {
+      "component": "dashboard",
+      "baselinePath": "implementation/coreiot/baseline/2026-08-03/exports/irrigation_management_dashboard.json",
+      "targetPath": "implementation/coreiot/v2.2/dashboards/irrigation_management_v2_2_staging.json",
+      "baselineSha256": "d2a4b1ce88814f8c2910bb5d27a0403a02dfd978981bbf503901e512db3574b0",
+      "targetSha256": "68aebde8cd0d462e1906fc6c39f127d7fc5a2dacb7d817b3146d08414275900b",
+      "changed": true,
+      "baselineStats": {
+        "name": "Irrigation Management",
+        "states": 10,
+        "widgets": 20,
+        "aliases": 6
+      },
+      "targetStats": {
+        "name": "Irrigation Management v2.2 [STAGING]",
+        "states": 7,
+        "widgets": 23,
+        "aliases": 13
+      }
+    }
+  ],
+  "added": {
+    "ruleChains": [
+      "SI Field Multivar Control v2.2",
+      "SI Environment v2.2",
+      "SI Pump Control v2.2",
+      "SI Safety v2.2"
+    ],
+    "profiles": [
+      "SF Env Sensor Cluster",
+      "SF Pump Controller",
+      "SF Manifold Controller",
+      "SF Gateway",
+      "SF Site"
+    ]
+  },
+  "removedFromTarget": [
+    "SI Field generator subsystem (two generators plus supporting nodes)",
+    "obsolete dashboard setup/sensor-detail states"
+  ]
+}

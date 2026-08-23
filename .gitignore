@@ -1,0 +1,23 @@
+**/.env
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+**/.pio/
+
+# Local workspace and internal planning history
+.agents/
+.codex/
+archive/
+docs/planning/
+tools/workspace_management/
+
+# Generated/deployment bundles; reviewable sources remain in the repository
+**/import_ready/
+*.zip
+*.bin
+
+# Runtime-generated state
+**/*.runtime-schedules.json
+
+# Deliverables are added only when the submission versions are finalized
+deliverables/

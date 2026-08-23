@@ -1,0 +1,29 @@
+{
+  "runId": "EV-V23-SAFETY-20260808-R03",
+  "startedAt": "2026-08-08T14:16:16+07:00",
+  "endedAt": "2026-08-08T14:19:31+07:00",
+  "environment": "SIM+PLATFORM",
+  "tenant": "app.coreiot.io",
+  "config": "implementation/gateway/config/devices.v23.live-safety-batch.json",
+  "command": "py -3 implementation/gateway/simulator_v23.py --config implementation/gateway/config/devices.v23.live-safety-batch.json --ticks 40 --log-level INFO",
+  "credentialsStored": false,
+  "automatedChecks": {
+    "unit": {"passed": 73, "failed": 0},
+    "regression": {"passed": 33, "failed": 0},
+    "pyCompile": "PASS"
+  },
+  "liveCases": {
+    "tankLow": "PASS",
+    "zoneFlowLow": "PASS",
+    "pumpDryRun": "PASS",
+    "degradedReconnect": "PASS",
+    "downstreamReannounce": "PASS",
+    "bufferReplay": "PASS"
+  },
+  "finalState": {
+    "activeZones": 0,
+    "pumpState": "OFF",
+    "operationMode": "NORMAL",
+    "processExitCode": 0
+  }
+}

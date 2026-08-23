@@ -1,0 +1,294 @@
+{
+  "ruleChain": {
+    "name": "SI Smart Valve",
+    "type": "CORE",
+    "firstRuleNodeId": null,
+    "root": false,
+    "debugMode": false,
+    "configuration": null,
+    "additionalInfo": {
+      "description": "Chuyển lệnh tưới thủ công tới Gateway và đồng bộ trạng thái tưới lên Field."
+    }
+  },
+  "metadata": {
+    "version": 5,
+    "firstNodeIndex": 0,
+    "nodes": [
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbTransformMsgNode",
+        "name": "Normalize Valve State + ACK",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "TBEL",
+          "jsScript": "if (msgType == \"POST_TELEMETRY_REQUEST\") {\n    var valid = msg.valveState == null || msg.valveState == \"ON\" || msg.valveState == \"OFF\";\n    if (!valid) {\n        delete msg.valveState;\n        msg.dataQuality = \"INVALID_STATE\";\n    } else {\n        msg.dataQuality = \"OK\";\n    }\n    if (msg.lastAck == null) msg.lastAck = \"NONE\";\n    if (msg.safetyBlockReason == null) msg.safetyBlockReason = \"NONE\";\n}\nreturn {msg: msg, metadata: metadata, msgType: msgType};",
+          "tbelScript": "if (msgType == \"POST_TELEMETRY_REQUEST\") {\n    var valid = msg.valveState == null || msg.valveState == \"ON\" || msg.valveState == \"OFF\";\n    if (!valid) {\n        msg.remove(\"valveState\");\n        msg.dataQuality = \"INVALID_STATE\";\n    } else {\n        msg.dataQuality = \"OK\";\n    }\n    if (msg.lastAck == null) msg.lastAck = \"NONE\";\n    if (msg.safetyBlockReason == null) msg.safetyBlockReason = \"NONE\";\n}\nreturn {msg: msg, metadata: metadata, msgType: msgType};"
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 70,
+          "layoutY": 150
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.profile.TbDeviceProfileNode",
+        "name": "Device Profile Node",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "persistAlarmRulesState": true,
+          "fetchAlarmRulesStateOnStart": true
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 209,
+          "layoutY": 307
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode",
+        "name": "Message Type Switch",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "version": 0
+        },
+        "additionalInfo": {
+          "layoutX": 494,
+          "layoutY": 309
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode",
+        "name": "Save Timeseries",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "defaultTTL": 0,
+          "useServerTs": false,
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          }
+        },
+        "additionalInfo": {
+          "layoutX": 822,
+          "layoutY": 294
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.rpc.TbSendRPCRequestNode",
+        "name": "RPC Call Request",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "timeoutInSeconds": 60
+        },
+        "additionalInfo": {
+          "layoutX": 822,
+          "layoutY": 507
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.filter.TbJsFilterNode",
+        "name": "Has Field State or Task?",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "TBEL",
+          "jsScript": "return msg.actualValveState != null || msg.valveState != null || msg.irrigationTask != null || msg.gatewayScheduleId != null || msg.waterConsumptionLiters != null;",
+          "tbelScript": "return msg.actualValveState != null || msg.valveState != null || msg.irrigationTask != null || msg.gatewayScheduleId != null || msg.waterConsumptionLiters != null;"
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 360,
+          "layoutY": 430
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbChangeOriginatorNode",
+        "name": "To Related Field - Actual State",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "originatorSource": "RELATED",
+          "relationsQuery": {
+            "fetchLastLevelOnly": false,
+            "direction": "TO",
+            "maxLevel": 1,
+            "filters": [
+              {
+                "relationType": "FieldToSmartValve",
+                "entityTypes": [
+                  "ASSET"
+                ]
+              }
+            ]
+          },
+          "preserveOriginatorIfCustomer": true
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 590,
+          "layoutY": 430
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbTransformMsgNode",
+        "name": "Normalize Field Actual Valve State",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "TBEL",
+          "jsScript": "var newMsg = {};\nvar actual = msg.actualValveState != null ? msg.actualValveState : msg.valveState;\nif (actual != null) {\n    var ack = msg.lastAck != null ? msg.lastAck : \"NONE\";\n    newMsg.actualValveState = actual;\n    newMsg.irrigationState = actual;\n    newMsg.commandStatus = msg.commandStatus != null ? msg.commandStatus : ack;\n    newMsg.valveLastCommandId = msg.lastCommandId != null ? msg.lastCommandId : \"\";\n    newMsg.valveLastAck = ack;\n    newMsg.valveSafetyBlockReason = msg.safetyBlockReason != null ? msg.safetyBlockReason : \"NONE\";\n    newMsg.decisionReason = msg.decisionReason != null ? msg.decisionReason : \"NONE\";\n    newMsg.irrigationPriority = msg.irrigationPriority != null ? msg.irrigationPriority : 0;\n}\nif (msg.irrigationTask != null) {\n    newMsg.irrigationTask = msg.irrigationTask;\n}\nif (msg.gatewayScheduleId != null) {\n    newMsg.gatewayScheduleId = msg.gatewayScheduleId;\n    newMsg.gatewayScheduleSource = msg.gatewayScheduleSource;\n    newMsg.gatewayScheduleEnabled = msg.gatewayScheduleEnabled;\n    newMsg.gatewayScheduleStatus = msg.gatewayScheduleStatus;\n    newMsg.gatewayScheduleNextRunTs = msg.gatewayScheduleNextRunTs;\n    newMsg.gatewayScheduleDurationSec = msg.gatewayScheduleDurationSec;\n    newMsg.gatewayScheduleRepeatEverySec = msg.gatewayScheduleRepeatEverySec;\n    newMsg.gatewayScheduleLastRunTs = msg.gatewayScheduleLastRunTs;\n    newMsg.gatewayScheduleLastResultReason = msg.gatewayScheduleLastResultReason;\n    newMsg.gatewayScheduleConfigCommandId = msg.gatewayScheduleConfigCommandId;\n    newMsg.gatewayScheduleConfigAck = msg.gatewayScheduleConfigAck;\n    newMsg.gatewayScheduleConfigReason = msg.gatewayScheduleConfigReason;\n}\nif (msg.waterConsumptionLiters != null) {\n    newMsg.waterConsumptionLiters = msg.waterConsumptionLiters;\n    newMsg.cycleWaterLiters = msg.cycleWaterLiters;\n    newMsg.dailyWaterLiters = msg.dailyWaterLiters;\n}\nreturn {msg: newMsg, metadata: metadata, msgType: \"POST_TELEMETRY_REQUEST\"};",
+          "tbelScript": "var newMsg = {};\nvar actual = msg.actualValveState != null ? msg.actualValveState : msg.valveState;\nif (actual != null) {\n    var ack = msg.lastAck != null ? msg.lastAck : \"NONE\";\n    newMsg.actualValveState = actual;\n    newMsg.irrigationState = actual;\n    newMsg.commandStatus = msg.commandStatus != null ? msg.commandStatus : ack;\n    newMsg.valveLastCommandId = msg.lastCommandId != null ? msg.lastCommandId : \"\";\n    newMsg.valveLastAck = ack;\n    newMsg.valveSafetyBlockReason = msg.safetyBlockReason != null ? msg.safetyBlockReason : \"NONE\";\n    newMsg.decisionReason = msg.decisionReason != null ? msg.decisionReason : \"NONE\";\n    newMsg.irrigationPriority = msg.irrigationPriority != null ? msg.irrigationPriority : 0;\n}\nif (msg.irrigationTask != null) {\n    newMsg.irrigationTask = msg.irrigationTask;\n}\nif (msg.gatewayScheduleId != null) {\n    newMsg.gatewayScheduleId = msg.gatewayScheduleId;\n    newMsg.gatewayScheduleSource = msg.gatewayScheduleSource;\n    newMsg.gatewayScheduleEnabled = msg.gatewayScheduleEnabled;\n    newMsg.gatewayScheduleStatus = msg.gatewayScheduleStatus;\n    newMsg.gatewayScheduleNextRunTs = msg.gatewayScheduleNextRunTs;\n    newMsg.gatewayScheduleDurationSec = msg.gatewayScheduleDurationSec;\n    newMsg.gatewayScheduleRepeatEverySec = msg.gatewayScheduleRepeatEverySec;\n    newMsg.gatewayScheduleLastRunTs = msg.gatewayScheduleLastRunTs;\n    newMsg.gatewayScheduleLastResultReason = msg.gatewayScheduleLastResultReason;\n    newMsg.gatewayScheduleConfigCommandId = msg.gatewayScheduleConfigCommandId;\n    newMsg.gatewayScheduleConfigAck = msg.gatewayScheduleConfigAck;\n    newMsg.gatewayScheduleConfigReason = msg.gatewayScheduleConfigReason;\n}\nif (msg.waterConsumptionLiters != null) {\n    newMsg.waterConsumptionLiters = msg.waterConsumptionLiters;\n    newMsg.cycleWaterLiters = msg.cycleWaterLiters;\n    newMsg.dailyWaterLiters = msg.dailyWaterLiters;\n}\nreturn {msg: newMsg, metadata: metadata, msgType: \"POST_TELEMETRY_REQUEST\"};"
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 830,
+          "layoutY": 430
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode",
+        "name": "Save Field Actual Valve State",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "defaultTTL": 0,
+          "useServerTs": false,
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          }
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 1070,
+          "layoutY": 430
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.flow.TbRuleChainInputNode",
+        "name": "Count Alarms",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "ruleChainId": null,
+          "forwardMsgToDefaultRuleChain": false
+        },
+        "additionalInfo": {
+          "description": "POST-IMPORT BINDING REQUIRED: resolve the target by exact v2.2 rule-chain name.",
+          "layoutX": 566,
+          "layoutY": 95
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromIndex": 0,
+        "toIndex": 1,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 3,
+        "type": "Post telemetry"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 4,
+        "type": "RPC Request to Device"
+      },
+      {
+        "fromIndex": 3,
+        "toIndex": 5,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 5,
+        "toIndex": 6,
+        "type": "True"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 7,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 7,
+        "toIndex": 8,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Failure"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Alarm Created"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 9,
+        "type": "Alarm Created"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Alarm Updated"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 9,
+        "type": "Alarm Updated"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Alarm Cleared"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 9,
+        "type": "Alarm Cleared"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Alarm Severity Updated"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 9,
+        "type": "Alarm Severity Updated"
+      }
+    ],
+    "ruleChainConnections": null
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "SF Site",
+  "description": "Top-level SmartFarm site for fields, gateway, pump and manifold relations.",
+  "image": null,
+  "defaultRuleChainId": null,
+  "defaultDashboardId": null,
+  "defaultQueueName": null,
+  "defaultEdgeRuleChainId": null,
+  "default": false
+}

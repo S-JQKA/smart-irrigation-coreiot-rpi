@@ -1,0 +1,23 @@
+{
+  "runId": "EV-ESP32S3-ESPNOW-20260817-R02",
+  "startedAt": "2026-08-17T14:57:55+07:00",
+  "endedAt": "2026-08-17T14:59:25+07:00",
+  "environment": "PHY",
+  "firmwareSource": "implementation/firmware/diagnostics/espnow_link_test",
+  "channel": 1,
+  "senderMac": "7C:DF:A1:FC:70:74",
+  "receiverMac": "F4:12:FA:E6:F9:48",
+  "receiverFirmwareSha256": "68DF0C5ADAB9BDDEC7E218E689829DB50E0C0929B702A51A6F66451ABE938EF5",
+  "packetBytes": 18,
+  "packetsExpected": 20,
+  "packetsReceived": 20,
+  "crcPassed": 20,
+  "ackQueued": 20,
+  "missingSequences": 0,
+  "duplicateSequences": 0,
+  "uplinkResult": "PASS",
+  "applicationAckResult": "INFERRED_PASS_NO_SENDER_LOG",
+  "credentialsStored": false,
+  "result": "PASS_WITH_OBSERVATION_LIMIT"
+}
+

@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "2.2",
+  "telemetry": {
+    "SI Field": {
+      "avgMoisture": "number:0..100",
+      "latestAvgMoisture": "number:0..100",
+      "waterConsumption": "number:litre>=0",
+      "currentIrrigationWaterConsumption": "number:litre>=0",
+      "irrigationState": "enum:IDLE|QUEUED|ON|DONE|BLOCKED",
+      "decisionReason": "string",
+      "safetyState": "enum:SAFE|WARNING|BLOCKED"
+    },
+    "SI Soil Moisture Sensor": {
+      "moisture": "number:0..100",
+      "battery": "number:0..100",
+      "active": "boolean",
+      "dataQuality": "enum:OK|OUT_OF_RANGE|STALE|DUPLICATE|INVALID"
+    },
+    "SI Water Meter": {
+      "pulseCounter": "integer:monotonic>=0",
+      "flowRate": "number:litre_per_minute>=0",
+      "battery": "number:0..100",
+      "dataQuality": "enum:OK|OUT_OF_RANGE|STALE|DUPLICATE|INVALID"
+    },
+    "SI Smart Valve": {
+      "valveState": "enum:ON|OFF|UNKNOWN",
+      "lastCommandId": "string",
+      "lastAck": "enum:EXECUTED|SAFETY_BLOCK|EXPIRED|DUPLICATE|INVALID_COMMAND|NONE",
+      "safetyBlockReason": "string"
+    },
+    "SF Env Sensor Cluster": {
+      "airTemp": "number:celsius:-10..60",
+      "airHumidity": "number:0..100",
+      "lightLux": "number:0..100000",
+      "vpd": "number:kPa>=0",
+      "battery": "number:0..100",
+      "rssi": "integer:dBm:-120..0",
+      "dataQuality": "enum:OK|OUT_OF_RANGE|STALE|DUPLICATE|INVALID"
+    },
+    "SF Pump Controller": {
+      "pumpState": "enum:ON|OFF|UNKNOWN",
+      "runtimeSec": "integer>=0",
+      "lastCommandId": "string",
+      "lastAck": "enum:EXECUTED|SAFETY_BLOCK|EXPIRED|DUPLICATE|INVALID_COMMAND|NONE",
+      "safetyBlockReason": "string"
+    },
+    "SF Manifold Controller": {
+      "tankLowSwitch": "boolean",
+      "tankLevelPct": "number:0..100",
+      "activeZoneCount": "integer>=0",
+      "controllerState": "enum:ONLINE|OFFLINE|FAULT",
+      "systemMode": "enum:NORMAL|DEGRADED|SAFE-IDLE"
+    },
+    "SF Gateway": {
+      "gatewayMode": "enum:SIM|GATEWAY",
+      "systemMode": "enum:NORMAL|DEGRADED|SAFE-IDLE",
+      "connectedDeviceCount": "integer>=0",
+      "bufferDepth": "integer>=0",
+      "lastSyncTs": "integer:unix_ms"
+    }
+  },
+  "attributes": {
+    "SI Field": {
+      "criticalMoisture": 15,
+      "minMoistureThreshold": 30,
+      "targetMoisture": 55,
+      "maxMoistureThreshold": 70,
+      "floodMoistureThreshold": 85,
+      "maxWaterPerCycle": 1000,
+      "maxWaterPerDay": 5000,
+      "maxDurationSec": 600,
+      "controlMode": "DISABLED",
+      "hydraulicGroupId": "main"
+    },
+    "SF Site": {
+      "maxConcurrentZones": 2,
+      "systemMode": "SAFE-IDLE"
+    },
+    "batteryAlarm": {
+      "lowBatteryThreshold": 30,
+      "lowBatteryClearThreshold": 35,
+      "lowBatteryAlarmEnabled": true
+    }
+  },
+  "rpc": {
+    "methods": ["TURN_ON", "TURN_OFF"],
+    "request": {
+      "commandId": "uuid",
+      "source": "enum:AUTO|MANUAL|SCHEDULER|SAFETY",
+      "requestedAt": "integer:unix_ms",
+      "ttlSeconds": "integer:1..3600",
+      "reason": "string"
+    },
+    "response": {
+      "success": "boolean",
+      "state": "enum:ON|OFF",
+      "reason": "enum:EXECUTED|SAFETY_BLOCK|EXPIRED|DUPLICATE|INVALID_COMMAND",
+      "commandId": "uuid"
+    }
+  },
+  "gatewayTopics": [
+    "v1/gateway/connect",
+    "v1/gateway/disconnect",
+    "v1/gateway/telemetry",
+    "v1/gateway/attributes",
+    "v1/gateway/attributes/request",
+    "v1/gateway/attributes/response",
+    "v1/gateway/rpc"
+  ]
+}

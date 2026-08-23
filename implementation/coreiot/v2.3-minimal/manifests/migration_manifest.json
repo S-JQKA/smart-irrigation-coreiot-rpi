@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "2.3-minimal",
+  "rootRuleChain": "KEEP_EXISTING_TENANT_ROOT",
+  "importOrder": [
+    "SI Count Alarms",
+    "SI Field Recommendation",
+    "SI Field",
+    "SI Soil Moisture",
+    "SI Environment",
+    "SI Water Meter",
+    "SI Smart Valve"
+  ],
+  "postImportBindings": [
+    {
+      "node": "To Field Recommendation",
+      "target": "SI Field Recommendation"
+    },
+    {
+      "node": "Count Alarms",
+      "target": "SI Count Alarms"
+    }
+  ],
+  "activation": "Bind both existing Fields after Task Sync v2.3.2 import; do not create a synthetic Field 3.",
+  "controlOwnership": "Gateway-local schedules are authoritative. CoreIoT recommendation and task sync never send automatic RPC."
+}

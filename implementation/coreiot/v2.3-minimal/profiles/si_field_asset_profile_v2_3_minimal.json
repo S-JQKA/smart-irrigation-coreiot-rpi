@@ -1,0 +1,10 @@
+{
+  "name": "SI Field",
+  "description": "Khu vực canh tác, liên kết cảm biến và trạng thái tưới.",
+  "image": null,
+  "defaultRuleChainId": null,
+  "defaultDashboardId": null,
+  "defaultQueueName": null,
+  "defaultEdgeRuleChainId": null,
+  "default": false
+}

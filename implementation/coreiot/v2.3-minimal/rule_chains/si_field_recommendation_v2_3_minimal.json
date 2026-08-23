@@ -1,0 +1,106 @@
+{
+  "ruleChain": {
+    "name": "SI Field Recommendation",
+    "type": "CORE",
+    "firstRuleNodeId": null,
+    "root": false,
+    "debugMode": false,
+    "configuration": null,
+    "additionalInfo": {
+      "description": "Khuyến nghị tưới dựa trên các thông số thu thập, không trực tiếp điều khiển van."
+    }
+  },
+  "metadata": {
+    "version": 5,
+    "firstNodeIndex": 0,
+    "nodes": [
+      {
+        "type": "org.thingsboard.rule.engine.metadata.TbGetAttributesNode",
+        "name": "Fetch Recommendation Context",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "tellFailureIfAbsent": false,
+          "clientAttributeNames": [],
+          "sharedAttributeNames": [],
+          "serverAttributeNames": [
+            "criticalMoisture",
+            "minMoistureThreshold",
+            "targetMoisture",
+            "maxMoistureThreshold",
+            "floodMoistureThreshold",
+            "controlMode"
+          ],
+          "latestTsKeyNames": [
+            "avgMoisture",
+            "airTemp",
+            "airHumidity",
+            "vpd",
+            "lightLux",
+            "actualValveState"
+          ],
+          "getLatestValueWithTs": true,
+          "fetchTo": "METADATA"
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 80,
+          "layoutY": 220
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbTransformMsgNode",
+        "name": "Evaluate Multivariable Recommendation",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "TBEL",
+          "jsScript": "var moisture = msg.avgMoisture;\nif (moisture == null && metadata.avgMoisture != null) moisture = JSON.parse(metadata.avgMoisture).value;\nvar airTemp = metadata.airTemp != null ? JSON.parse(metadata.airTemp).value : null;\nvar airHumidity = metadata.airHumidity != null ? JSON.parse(metadata.airHumidity).value : null;\nvar vpd = metadata.vpd != null ? JSON.parse(metadata.vpd).value : null;\nvar lightLux = metadata.lightLux != null ? JSON.parse(metadata.lightLux).value : null;\nvar actualState = metadata.actualValveState != null ? JSON.parse(metadata.actualValveState).value : \"OFF\";\nvar critical = metadata.ss_criticalMoisture != null ? parseDouble(metadata.ss_criticalMoisture) : 15;\nvar minimum = metadata.ss_minMoistureThreshold != null ? parseDouble(metadata.ss_minMoistureThreshold) : 30;\nvar target = metadata.ss_targetMoisture != null ? parseDouble(metadata.ss_targetMoisture) : 55;\nvar maximum = metadata.ss_maxMoistureThreshold != null ? parseDouble(metadata.ss_maxMoistureThreshold) : 70;\nvar flood = metadata.ss_floodMoistureThreshold != null ? parseDouble(metadata.ss_floodMoistureThreshold) : 85;\nvar controlMode = metadata.ss_controlMode != null ? metadata.ss_controlMode : \"DISABLED\";\nvar hot = airTemp != null && airTemp > 28;\nvar highVpd = vpd != null && vpd > 1.5;\nvar highLight = lightLux != null && lightLux > 20000;\nvar stress = hot || highVpd || highLight;\nvar recommendation = \"NONE\";\nvar reason = \"NO_CHANGE\";\nvar priority = 0;\nif (moisture == null) {\n    reason = \"NO_VALID_MOISTURE\";\n} else if (actualState == \"ON\" && moisture >= flood) {\n    recommendation = \"TURN_OFF_REQUEST\";\n    reason = \"WATERLOGGING_RISK\";\n} else if (actualState == \"ON\" && moisture >= maximum) {\n    recommendation = \"TURN_OFF_REQUEST\";\n    reason = \"MAX_MOISTURE_REACHED\";\n} else if (actualState == \"ON\" && moisture >= target) {\n    recommendation = \"TURN_OFF_REQUEST\";\n    reason = \"TARGET_MOISTURE_REACHED\";\n} else if (controlMode == \"AUTO\" && actualState != \"ON\" && moisture < critical) {\n    recommendation = \"TURN_ON_REQUEST\";\n    reason = \"BELOW_CRITICAL_MOISTURE\";\n    priority = 100;\n} else if (controlMode == \"AUTO\" && actualState != \"ON\" && moisture < minimum) {\n    recommendation = \"TURN_ON_REQUEST\";\n    reason = stress ? \"BELOW_MIN_WITH_ENV_STRESS\" : \"BELOW_MIN_MOISTURE\";\n    priority = stress ? 80 : 60;\n} else if (controlMode != \"AUTO\") {\n    reason = \"AUTO_CONTROL_DISABLED\";\n}\nmsg = {\n    irrigationRecommendation: recommendation,\n    recommendationReason: reason,\n    irrigationPriority: priority,\n    environmentStress: stress,\n    observedAirTemp: airTemp,\n    observedAirHumidity: airHumidity,\n    observedVpd: vpd,\n    observedLightLux: lightLux,\n    recommendationAt: Date.now()\n};\nreturn {msg: msg, metadata: metadata, msgType: \"POST_TELEMETRY_REQUEST\"};",
+          "tbelScript": "var moisture = msg.avgMoisture;\nif (moisture == null && metadata.avgMoisture != null) moisture = JSON.parse(metadata.avgMoisture).value;\nvar airTemp = metadata.airTemp != null ? JSON.parse(metadata.airTemp).value : null;\nvar airHumidity = metadata.airHumidity != null ? JSON.parse(metadata.airHumidity).value : null;\nvar vpd = metadata.vpd != null ? JSON.parse(metadata.vpd).value : null;\nvar lightLux = metadata.lightLux != null ? JSON.parse(metadata.lightLux).value : null;\nvar actualState = metadata.actualValveState != null ? JSON.parse(metadata.actualValveState).value : \"OFF\";\nvar critical = metadata.ss_criticalMoisture != null ? parseDouble(metadata.ss_criticalMoisture) : 15;\nvar minimum = metadata.ss_minMoistureThreshold != null ? parseDouble(metadata.ss_minMoistureThreshold) : 30;\nvar target = metadata.ss_targetMoisture != null ? parseDouble(metadata.ss_targetMoisture) : 55;\nvar maximum = metadata.ss_maxMoistureThreshold != null ? parseDouble(metadata.ss_maxMoistureThreshold) : 70;\nvar flood = metadata.ss_floodMoistureThreshold != null ? parseDouble(metadata.ss_floodMoistureThreshold) : 85;\nvar controlMode = metadata.ss_controlMode != null ? metadata.ss_controlMode : \"DISABLED\";\nvar hot = airTemp != null && airTemp > 28;\nvar highVpd = vpd != null && vpd > 1.5;\nvar highLight = lightLux != null && lightLux > 20000;\nvar stress = hot || highVpd || highLight;\nvar recommendation = \"NONE\";\nvar reason = \"NO_CHANGE\";\nvar priority = 0;\nif (moisture == null) {\n    reason = \"NO_VALID_MOISTURE\";\n} else if (actualState == \"ON\" && moisture >= flood) {\n    recommendation = \"TURN_OFF_REQUEST\";\n    reason = \"WATERLOGGING_RISK\";\n} else if (actualState == \"ON\" && moisture >= maximum) {\n    recommendation = \"TURN_OFF_REQUEST\";\n    reason = \"MAX_MOISTURE_REACHED\";\n} else if (actualState == \"ON\" && moisture >= target) {\n    recommendation = \"TURN_OFF_REQUEST\";\n    reason = \"TARGET_MOISTURE_REACHED\";\n} else if (controlMode == \"AUTO\" && actualState != \"ON\" && moisture < critical) {\n    recommendation = \"TURN_ON_REQUEST\";\n    reason = \"BELOW_CRITICAL_MOISTURE\";\n    priority = 100;\n} else if (controlMode == \"AUTO\" && actualState != \"ON\" && moisture < minimum) {\n    recommendation = \"TURN_ON_REQUEST\";\n    reason = stress ? \"BELOW_MIN_WITH_ENV_STRESS\" : \"BELOW_MIN_MOISTURE\";\n    priority = stress ? 80 : 60;\n} else if (controlMode != \"AUTO\") {\n    reason = \"AUTO_CONTROL_DISABLED\";\n}\nmsg = {\n    irrigationRecommendation: recommendation,\n    recommendationReason: reason,\n    irrigationPriority: priority,\n    environmentStress: stress,\n    observedAirTemp: airTemp,\n    observedAirHumidity: airHumidity,\n    observedVpd: vpd,\n    observedLightLux: lightLux,\n    recommendationAt: Date.now()\n};\nreturn {msg: msg, metadata: metadata, msgType: \"POST_TELEMETRY_REQUEST\"};"
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 340,
+          "layoutY": 220
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode",
+        "name": "Save Recommendation Only",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "defaultTTL": 0,
+          "useServerTs": false,
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          }
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 650,
+          "layoutY": 220
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromIndex": 0,
+        "toIndex": 1,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Success"
+      }
+    ],
+    "ruleChainConnections": null
+  }
+}

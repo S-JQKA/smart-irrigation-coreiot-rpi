@@ -1,0 +1,411 @@
+{
+  "ruleChain": {
+    "name": "SI Water Meter v2.2",
+    "type": "CORE",
+    "firstRuleNodeId": null,
+    "root": false,
+    "debugMode": false,
+    "configuration": null,
+    "additionalInfo": {
+      "description": "Baseline pulse delta plus a defensive cloud check; branch safety remains at the gateway/controller."
+    }
+  },
+  "metadata": {
+    "version": 3,
+    "firstNodeIndex": 14,
+    "nodes": [
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode",
+        "name": "Save Timeseries",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "defaultTTL": 0,
+          "useServerTs": false,
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          }
+        },
+        "additionalInfo": {
+          "layoutX": 1230,
+          "layoutY": 221
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgAttributesNode",
+        "name": "Save Client Attributes",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 3,
+        "configuration": {
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          },
+          "scope": "CLIENT_SCOPE",
+          "notifyDevice": false,
+          "sendAttributesUpdatedNotification": false,
+          "updateAttributesOnlyOnValueChange": false
+        },
+        "additionalInfo": {
+          "layoutX": 915,
+          "layoutY": 224
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode",
+        "name": "Message Type Switch",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "version": 0
+        },
+        "additionalInfo": {
+          "layoutX": 585,
+          "layoutY": 312
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.action.TbLogNode",
+        "name": "Log RPC from Device",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "TBEL",
+          "jsScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);",
+          "tbelScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);"
+        },
+        "additionalInfo": {
+          "description": null,
+          "layoutX": 915,
+          "layoutY": 386
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.action.TbLogNode",
+        "name": "Log Other",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "TBEL",
+          "jsScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);",
+          "tbelScript": "return '\\nIncoming message:\\n' + JSON.stringify(msg) + '\\nIncoming metadata:\\n' + JSON.stringify(metadata);"
+        },
+        "additionalInfo": {
+          "description": null,
+          "layoutX": 914,
+          "layoutY": 447
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.rpc.TbSendRPCRequestNode",
+        "name": "RPC Call Request",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "timeoutInSeconds": 60
+        },
+        "additionalInfo": {
+          "layoutX": 913,
+          "layoutY": 510
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.profile.TbDeviceProfileNode",
+        "name": "Device Profile Node",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "persistAlarmRulesState": true,
+          "fetchAlarmRulesStateOnStart": true
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 288,
+          "layoutY": 312
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.metadata.CalculateDeltaNode",
+        "name": "Calculate Delta",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "inputValueKey": "pulseCounter",
+          "outputValueKey": "waterConsumption",
+          "useCache": true,
+          "addPeriodBetweenMsgs": false,
+          "periodValueKey": "periodInMs",
+          "round": null,
+          "tellFailureIfDeltaIsNegative": true,
+          "excludeZeroDeltas": false
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 1231,
+          "layoutY": 314
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbChangeOriginatorNode",
+        "name": "To Field",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "originatorSource": "RELATED",
+          "entityType": null,
+          "entityNamePattern": null,
+          "relationsQuery": {
+            "fetchLastLevelOnly": false,
+            "direction": "TO",
+            "maxLevel": 1,
+            "filters": [
+              {
+                "relationType": "FieldToWaterMeter",
+                "entityTypes": [
+                  "ASSET"
+                ]
+              }
+            ]
+          },
+          "preserveOriginatorIfCustomer": true
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 1239,
+          "layoutY": 459
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.flow.TbRuleChainInputNode",
+        "name": "To Field Rule Chain",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "ruleChainId": null,
+          "forwardMsgToDefaultRuleChain": false
+        },
+        "additionalInfo": {
+          "description": "POST-IMPORT BINDING REQUIRED: resolve the target by exact v2.2 rule-chain name.",
+          "layoutX": 1239,
+          "layoutY": 527
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.flow.TbRuleChainInputNode",
+        "name": "Count Alarms",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "ruleChainId": null,
+          "forwardMsgToDefaultRuleChain": false
+        },
+        "additionalInfo": {
+          "description": "POST-IMPORT BINDING REQUIRED: resolve the target by exact v2.2 rule-chain name.",
+          "layoutX": 584,
+          "layoutY": 144
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.flow.TbAckNode",
+        "name": "Ignore Failure",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "version": 0
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 1554,
+          "layoutY": 311
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.flow.TbCheckpointNode",
+        "name": "Sequential",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": "SequentialByOriginator",
+        "configurationVersion": 1,
+        "configuration": {},
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 950,
+          "layoutY": 314
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.flow.TbCheckpointNode",
+        "name": "Main",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": "Main",
+        "configurationVersion": 1,
+        "configuration": {},
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 1237,
+          "layoutY": 383
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbTransformMsgNode",
+        "name": "Cloud Defensive Check - Water",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "TBEL",
+          "jsScript": "if (msgType == \"POST_TELEMETRY_REQUEST\") {\n    var pulse = msg.pulseCounter != null ? parseFloat(msg.pulseCounter) : null;\n    var flow = msg.flowRate != null ? parseFloat(msg.flowRate) : 0;\n    var valid = pulse != null && pulse >= 0 && flow >= 0;\n    if (!valid) {\n        delete msg.pulseCounter;\n        delete msg.flowRate;\n        msg.dataQuality = \"OUT_OF_RANGE\";\n    } else {\n        msg.pulseCounter = pulse;\n        msg.flowRate = flow;\n        msg.dataQuality = \"OK\";\n    }\n}\nreturn {msg: msg, metadata: metadata, msgType: msgType};",
+          "tbelScript": "if (msgType == \"POST_TELEMETRY_REQUEST\") {\n    var pulse = msg.pulseCounter != null ? parseFloat(msg.pulseCounter) : null;\n    var flow = msg.flowRate != null ? parseFloat(msg.flowRate) : 0;\n    var valid = pulse != null && pulse >= 0 && flow >= 0;\n    if (!valid) {\n        msg.remove(\"pulseCounter\");\n        msg.remove(\"flowRate\");\n        msg.dataQuality = \"OUT_OF_RANGE\";\n    } else {\n        msg.pulseCounter = pulse;\n        msg.flowRate = flow;\n        msg.dataQuality = \"OK\";\n    }\n}\nreturn {msg: msg, metadata: metadata, msgType: msgType};"
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 70,
+          "layoutY": 150
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromIndex": 2,
+        "toIndex": 0,
+        "type": "Post telemetry"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 1,
+        "type": "Post attributes"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 3,
+        "type": "RPC Request from Device"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 4,
+        "type": "Other"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 5,
+        "type": "RPC Request to Device"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 10,
+        "type": "Alarm Acknowledged"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 10,
+        "type": "Alarm Cleared"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 12,
+        "type": "Post telemetry"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 2,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 10,
+        "type": "Alarm Cleared"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 10,
+        "type": "Alarm Created"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 10,
+        "type": "Alarm Severity Updated"
+      },
+      {
+        "fromIndex": 7,
+        "toIndex": 11,
+        "type": "Failure"
+      },
+      {
+        "fromIndex": 7,
+        "toIndex": 13,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 8,
+        "toIndex": 9,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 12,
+        "toIndex": 7,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 13,
+        "toIndex": 8,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 14,
+        "toIndex": 6,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 2,
+        "type": "Failure"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 2,
+        "type": "Alarm Created"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 2,
+        "type": "Alarm Updated"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 2,
+        "type": "Alarm Cleared"
+      },
+      {
+        "fromIndex": 6,
+        "toIndex": 2,
+        "type": "Alarm Severity Updated"
+      }
+    ],
+    "ruleChainConnections": null
+  }
+}

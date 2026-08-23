@@ -1,0 +1,30 @@
+{
+  "zones": [
+    {
+      "zone_id": "zone_1",
+      "field_name": "SI Field 1",
+      "soil_device": {
+        "name": "SI Soil Moisture 1",
+        "token_env": "SOIL_1_TOKEN"
+      },
+      "valve_device": {
+        "name": "SI Smart Valve 1",
+        "token_env": "VALVE_1_TOKEN"
+      },
+      "water_meter_device": {
+        "name": "SI Water Meter 1",
+        "token_env": "WATER_1_TOKEN"
+      },
+      "thresholds": {
+        "minMoisture": 25,
+        "targetMoisture": 55,
+        "maxMoisture": 75,
+        "floodMoisture": 82
+      },
+      "water": {
+        "pulsesPerTick": 35,
+        "pulseCounterStart": 0
+      }
+    }
+  ]
+}

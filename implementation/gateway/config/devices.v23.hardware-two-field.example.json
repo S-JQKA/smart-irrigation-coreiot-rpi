@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "2.3-hardware-two-field-template",
+  "runtimeProfile": "HARDWARE_TWO_FIELD",
+  "transportMode": "GATEWAY",
+  "controlAuthority": "LOCAL",
+  "gateway": {
+    "name": "SmartFarm Pi Gateway",
+    "profile": "SF Gateway",
+    "hostEnv": "COREIOT_MQTT_HOST",
+    "portEnv": "COREIOT_MQTT_PORT",
+    "tokenEnv": "COREIOT_GATEWAY_TOKEN",
+    "tlsEnv": "COREIOT_MQTT_TLS"
+  },
+  "devices": [
+    {"name": "SI Soil Moisture 1", "profile": "SI Soil Moisture Sensor", "zoneId": "field-1"},
+    {"name": "SI Soil Moisture 2", "profile": "SI Soil Moisture Sensor", "zoneId": "field-1"},
+    {"name": "SI Soil Moisture 3", "profile": "SI Soil Moisture Sensor", "zoneId": "field-1"},
+    {"name": "SI Soil Moisture 4", "profile": "SI Soil Moisture Sensor", "zoneId": "field-1"},
+    {"name": "SI Smart Valve 1", "profile": "SI Smart Valve", "zoneId": "field-1"},
+    {"name": "SI Water Meter 1", "profile": "SI Water Meter", "zoneId": "field-1"},
+    {"name": "SF Env Sensor 1", "profile": "SF Env Sensor", "zoneId": "field-1"},
+    {"name": "SI Soil Moisture 5", "profile": "SI Soil Moisture Sensor", "zoneId": "field-2"},
+    {"name": "SI Soil Moisture 6", "profile": "SI Soil Moisture Sensor", "zoneId": "field-2"},
+    {"name": "SI Soil Moisture 7", "profile": "SI Soil Moisture Sensor", "zoneId": "field-2"},
+    {"name": "SI Soil Moisture 8", "profile": "SI Soil Moisture Sensor", "zoneId": "field-2"},
+    {"name": "SI Smart Valve 2", "profile": "SI Smart Valve", "zoneId": "field-2"},
+    {"name": "SI Water Meter 2", "profile": "SI Water Meter", "zoneId": "field-2"},
+    {"name": "SF Env Sensor 2", "profile": "SF Env Sensor", "zoneId": "field-2"},
+    {"name": "SF Main Pump 1", "profile": "SF Pump Controller", "zoneId": "site"},
+    {"name": "SF Manifold 1", "profile": "SF Manifold Controller", "zoneId": "site"}
+  ],
+  "runtime": {
+    "serialPortEnv": "SMARTFARM_SERIAL_PORT",
+    "serialPort": "/dev/serial/by-id/REPLACE_WITH_ESP32_BRIDGE",
+    "baudrate": 115200,
+    "requireNtpSync": true,
+    "hardwareZones": ["field-1", "field-2"],
+    "mappedDevices": [
+      "SI Soil Moisture 1", "SI Soil Moisture 2", "SI Soil Moisture 3", "SI Soil Moisture 4",
+      "SI Smart Valve 1", "SI Water Meter 1", "SF Env Sensor 1",
+      "SI Soil Moisture 5", "SI Soil Moisture 6", "SI Soil Moisture 7", "SI Soil Moisture 8",
+      "SI Smart Valve 2", "SI Water Meter 2", "SF Env Sensor 2",
+      "SF Main Pump 1", "SF Manifold 1"
+    ],
+    "expectedSensors": {"field-1": 4, "field-2": 4},
+    "minValidSensors": {"field-1": 3, "field-2": 3},
+    "peerDeviceMap": {
+      "sensor-field-1": ["SI Soil Moisture 1", "SI Soil Moisture 2", "SI Soil Moisture 3", "SI Soil Moisture 4", "SF Env Sensor 1"],
+      "sensor-field-2": ["SI Soil Moisture 5", "SI Soil Moisture 6", "SI Soil Moisture 7", "SI Soil Moisture 8", "SF Env Sensor 2"],
+      "central": ["SI Smart Valve 1", "SI Water Meter 1", "SI Smart Valve 2", "SI Water Meter 2", "SF Main Pump 1", "SF Manifold 1"]
+    }
+  },
+  "simulation": {
+    "intervalSeconds": 1,
+    "maxConcurrentZones": 1,
+    "pulsesPerLiter": 450,
+    "manualOffLatchSeconds": 300,
+    "manualOnMaxSeconds": 300,
+    "flowGraceSeconds": 15,
+    "minimumFlowRate": 0.1,
+    "sensorStaleSeconds": 30,
+    "cloudLossTimeoutSeconds": 60,
+    "startMoisture": {"field-1": 0, "field-2": 0},
+    "controlModes": {"field-1": "DISABLED", "field-2": "DISABLED"},
+    "thresholds": {
+      "criticalMoisture": 15,
+      "minMoistureThreshold": 30,
+      "targetMoisture": 55,
+      "maxMoistureThreshold": 70,
+      "floodMoistureThreshold": 85,
+      "maxWaterPerCycle": 1000,
+      "maxWaterPerDay": 5000,
+      "maxDurationSec": 600,
+      "hotTemperatureC": 28,
+      "highVpdKpa": 1.5,
+      "highLightLux": 20000,
+      "startDebounceSamples": 2,
+      "floodDebounceSamples": 3
+    }
+  }
+}

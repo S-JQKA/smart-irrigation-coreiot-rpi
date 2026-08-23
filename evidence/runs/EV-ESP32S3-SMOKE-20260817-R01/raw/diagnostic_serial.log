@@ -1,0 +1,13 @@
+[PASS] WIFI_SCAN networks=52 strongest_rssi=-37_dBm
+[PASS] BLE_STACK_INIT
+SUMMARY chip=PASS flash=PASS psram=PASS wifi=PASS ble=PASS
+RESULT=PASS
+Heartbeat follows every 2 seconds.
+HEARTBEAT 1 uptime_ms=9824 free_heap=287296
+HEARTBEAT 2 uptime_ms=11824 free_heap=287296
+HEARTBEAT 3 uptime_ms=13824 free_heap=287296
+HEARTBEAT 4 uptime_ms=15824 free_heap=287296
+HEARTBEAT 5 uptime_ms=17824 free_heap=287296
+HEARTBEAT 6 uptime_ms=19824 free_heap=287296
+HEARTBEAT 7 uptime_ms=21824 free_heap=287296
+

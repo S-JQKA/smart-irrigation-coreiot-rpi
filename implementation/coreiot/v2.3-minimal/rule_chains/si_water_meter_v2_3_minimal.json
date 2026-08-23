@@ -1,0 +1,309 @@
+{
+  "ruleChain": {
+    "name": "SI Water Meter",
+    "type": "CORE",
+    "firstRuleNodeId": null,
+    "root": false,
+    "debugMode": false,
+    "configuration": null,
+    "additionalInfo": {
+      "description": "Lưu lưu lượng tưới, lượng nước sử dụng và cảnh báo bất thường tưới."
+    }
+  },
+  "metadata": {
+    "version": 5,
+    "firstNodeIndex": 0,
+    "nodes": [
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbTransformMsgNode",
+        "name": "Cloud Defensive Check - Water",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "TBEL",
+          "jsScript": "if (msgType == \"POST_TELEMETRY_REQUEST\") {\n    var pulse = msg.pulseCounter != null ? parseFloat(msg.pulseCounter) : null;\n    var flow = msg.flowRate != null ? parseFloat(msg.flowRate) : 0;\n    var valid = pulse != null && pulse >= 0 && flow >= 0;\n    if (!valid) {\n        delete msg.pulseCounter;\n        delete msg.flowRate;\n        msg.dataQuality = \"OUT_OF_RANGE\";\n    } else {\n        msg.pulseCounter = pulse;\n        msg.flowRate = flow;\n        msg.dataQuality = \"OK\";\n    }\n}\nreturn {msg: msg, metadata: metadata, msgType: msgType};",
+          "tbelScript": "if (msgType == \"POST_TELEMETRY_REQUEST\") {\n    var pulse = msg.pulseCounter != null ? parseFloat(msg.pulseCounter) : null;\n    var flow = msg.flowRate != null ? parseFloat(msg.flowRate) : 0;\n    var valid = pulse != null && pulse >= 0 && flow >= 0;\n    if (!valid) {\n        msg.remove(\"pulseCounter\");\n        msg.remove(\"flowRate\");\n        msg.dataQuality = \"OUT_OF_RANGE\";\n    } else {\n        msg.pulseCounter = pulse;\n        msg.flowRate = flow;\n        msg.dataQuality = \"OK\";\n    }\n}\nreturn {msg: msg, metadata: metadata, msgType: msgType};"
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 70,
+          "layoutY": 150
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.profile.TbDeviceProfileNode",
+        "name": "Device Profile Node",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "persistAlarmRulesState": true,
+          "fetchAlarmRulesStateOnStart": true
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 288,
+          "layoutY": 312
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.filter.TbMsgTypeSwitchNode",
+        "name": "Message Type Switch",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "version": 0
+        },
+        "additionalInfo": {
+          "layoutX": 585,
+          "layoutY": 312
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode",
+        "name": "Save Timeseries",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "defaultTTL": 0,
+          "useServerTs": false,
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          }
+        },
+        "additionalInfo": {
+          "layoutX": 1230,
+          "layoutY": 221
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.metadata.CalculateDeltaNode",
+        "name": "Calculate Delta",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "inputValueKey": "pulseCounter",
+          "outputValueKey": "waterConsumption",
+          "useCache": true,
+          "addPeriodBetweenMsgs": false,
+          "periodValueKey": "periodInMs",
+          "round": null,
+          "tellFailureIfDeltaIsNegative": true,
+          "excludeZeroDeltas": false
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 1231,
+          "layoutY": 314
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbChangeOriginatorNode",
+        "name": "To Field",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "originatorSource": "RELATED",
+          "entityType": null,
+          "entityNamePattern": null,
+          "relationsQuery": {
+            "fetchLastLevelOnly": false,
+            "direction": "TO",
+            "maxLevel": 1,
+            "filters": [
+              {
+                "relationType": "FieldToWaterMeter",
+                "entityTypes": [
+                  "ASSET"
+                ]
+              }
+            ]
+          },
+          "preserveOriginatorIfCustomer": true
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 1239,
+          "layoutY": 459
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.flow.TbRuleChainInputNode",
+        "name": "Count Alarms",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "ruleChainId": null,
+          "forwardMsgToDefaultRuleChain": false
+        },
+        "additionalInfo": {
+          "description": "POST-IMPORT BINDING REQUIRED: resolve the target by exact v2.2 rule-chain name.",
+          "layoutX": 584,
+          "layoutY": 144
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.metadata.TbGetAttributesNode",
+        "name": "Fetch Pulses Per Liter",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "tellFailureIfAbsent": false,
+          "clientAttributeNames": [],
+          "sharedAttributeNames": [],
+          "serverAttributeNames": [
+            "pulsesPerLiter"
+          ],
+          "latestTsKeyNames": [],
+          "getLatestValueWithTs": true,
+          "fetchTo": "METADATA"
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 1210,
+          "layoutY": 190
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.transform.TbTransformMsgNode",
+        "name": "Convert Pulse Delta to Liters",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 0,
+        "configuration": {
+          "scriptLang": "TBEL",
+          "jsScript": "var pulseDelta = msg.waterConsumption != null ? parseDouble(msg.waterConsumption) : 0;\nvar pulsesPerLiter = metadata.ss_pulsesPerLiter != null ? parseDouble(metadata.ss_pulsesPerLiter) : 450;\nif (pulsesPerLiter <= 0) pulsesPerLiter = 450;\nmsg.pulseDelta = pulseDelta;\nmsg.waterConsumption = pulseDelta / pulsesPerLiter;\nmsg.waterConsumptionLiters = msg.waterConsumption;\nreturn {msg: msg, metadata: metadata, msgType: \"POST_TELEMETRY_REQUEST\"};",
+          "tbelScript": "var pulseDelta = msg.waterConsumption != null ? parseDouble(msg.waterConsumption) : 0;\nvar pulsesPerLiter = metadata.ss_pulsesPerLiter != null ? parseDouble(metadata.ss_pulsesPerLiter) : 450;\nif (pulsesPerLiter <= 0) pulsesPerLiter = 450;\nmsg.pulseDelta = pulseDelta;\nmsg.waterConsumption = pulseDelta / pulsesPerLiter;\nmsg.waterConsumptionLiters = msg.waterConsumption;\nreturn {msg: msg, metadata: metadata, msgType: \"POST_TELEMETRY_REQUEST\"};"
+        },
+        "additionalInfo": {
+          "description": "",
+          "layoutX": 1450,
+          "layoutY": 190
+        }
+      },
+      {
+        "type": "org.thingsboard.rule.engine.telemetry.TbMsgTimeseriesNode",
+        "name": "Save Field Water Liters",
+        "debugSettings": null,
+        "singletonMode": false,
+        "queueName": null,
+        "configurationVersion": 1,
+        "configuration": {
+          "defaultTTL": 0,
+          "useServerTs": false,
+          "processingSettings": {
+            "type": "ON_EVERY_MESSAGE"
+          }
+        },
+        "additionalInfo": {
+          "layoutX": 1930,
+          "layoutY": 190
+        }
+      }
+    ],
+    "connections": [
+      {
+        "fromIndex": 0,
+        "toIndex": 1,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 2,
+        "toIndex": 3,
+        "type": "Post telemetry"
+      },
+      {
+        "fromIndex": 3,
+        "toIndex": 4,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 4,
+        "toIndex": 7,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 7,
+        "toIndex": 8,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 8,
+        "toIndex": 5,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 5,
+        "toIndex": 9,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Success"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Failure"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Alarm Created"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 6,
+        "type": "Alarm Created"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Alarm Updated"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 6,
+        "type": "Alarm Updated"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Alarm Cleared"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 6,
+        "type": "Alarm Cleared"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 2,
+        "type": "Alarm Severity Updated"
+      },
+      {
+        "fromIndex": 1,
+        "toIndex": 6,
+        "type": "Alarm Severity Updated"
+      }
+    ],
+    "ruleChainConnections": null
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "dashboard": "Irrigation Management v2.2 [STAGING]",
+  "status": "DEFERRED_REFERENCE_ONLY",
+  "importReady": false,
+  "decision": "Do not import this JSON. Rebuild incrementally in CoreIoT using tenant-native widgets after entity aliases and telemetry are stable.",
+  "states": [
+    {
+      "id": "default",
+      "name": "Tổng quan",
+      "widgets": 6
+    },
+    {
+      "id": "field_detail",
+      "name": "Chi tiết Field",
+      "widgets": 5
+    },
+    {
+      "id": "control",
+      "name": "Điều khiển",
+      "widgets": 5
+    },
+    {
+      "id": "safety",
+      "name": "An toàn",
+      "widgets": 5
+    },
+    {
+      "id": "gateway",
+      "name": "Gateway",
+      "widgets": 3
+    },
+    {
+      "id": "alarm",
+      "name": "Alarm",
+      "widgets": 3
+    },
+    {
+      "id": "scheduler",
+      "name": "Scheduler",
+      "widgets": 3
+    }
+  ],
+  "aliases": [
+    "Fields",
+    "Current field",
+    "SmartFarm Site",
+    "Gateway",
+    "Pump",
+    "Manifold",
+    "Environment Sensors",
+    "Valves",
+    "Water Meters",
+    "Soil Sensors",
+    "Current Field Valves",
+    "Current Field Environment",
+    "Irrigation schedule"
+  ],
+  "controlActions": {
+    "fieldMode": [
+      "AUTO",
+      "MANUAL",
+      "DISABLED"
+    ],
+    "valveRpc": [
+      "TURN_ON",
+      "TURN_OFF"
+    ],
+    "pumpRpc": [
+      "TURN_ON",
+      "TURN_OFF"
+    ],
+    "rpcMetadata": [
+      "commandId",
+      "source",
+      "requestedAt",
+      "ttlSeconds",
+      "reason"
+    ],
+    "twoWayAck": true
+  },
+  "postImportChecks": [
+    "Resolve every alias without datasource errors",
+    "Open all seven states from the navigation strip",
+    "Verify mode action updates SERVER_SCOPE controlMode",
+    "Verify TURN_ON/TURN_OFF reaches Gateway API and renders lastAck",
+    "Verify alarm source includes Site descendants or rebind to Fields when tenant relation traversal differs"
+  ]
+}

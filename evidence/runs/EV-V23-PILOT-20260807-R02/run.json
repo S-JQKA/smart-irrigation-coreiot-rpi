@@ -1,0 +1,43 @@
+{
+  "evidenceId": "EV-V23-PILOT-20260807-R02",
+  "capturedAt": "2026-08-07T12:05:00+07:00",
+  "scope": "V23_FIELD1_MIXED_PILOT_AND_AUTOMATED_VERIFICATION",
+  "configuration": "implementation/gateway/config/devices.v23.field1-pilot.json",
+  "gateway": {
+    "implementation": "implementation/gateway/simulator_v23.py",
+    "transport": "COREIOT",
+    "controlAuthority": "MIXED",
+    "zoneAuthority": {
+      "field-1": "LOCAL",
+      "field-2": "COREIOT_REQUEST"
+    },
+    "topologyDevices": 16
+  },
+  "acceptance": {
+    "coreCases": 20,
+    "passed": 19,
+    "partial": 1,
+    "failed": 0,
+    "deferredNonGate": [
+      "Dashboard Command Button manual RPC delivery/response"
+    ]
+  },
+  "automatedVerification": {
+    "unitExpected": 28,
+    "coreiotStaticExpected": 30,
+    "note": "Final counts are revalidated during bundle freeze."
+  },
+  "liveObservations": {
+    "finalAverageMoisturePercent": 56.21,
+    "finalValveState": "OFF",
+    "finalPumpState": "OFF",
+    "commandStatus": "EXECUTED",
+    "pulseCounter": 5146.0,
+    "pulsesPerLiter": 450.0,
+    "waterConsumptionLiters": 11.436,
+    "irrigationRecommendation": "NONE",
+    "recommendationReason": "NO_CHANGE"
+  },
+  "result": "PASS_WITH_ONE_PARTIAL_AND_DASHBOARD_RPC_DEFERRED"
+}
+
