@@ -45,8 +45,9 @@ they are not duplicated on both environment clusters. The manifold publishes
 `systemMode=NORMAL|DEGRADED|SAFE-IDLE`.
 
 The simulator enforces `maxConcurrentZones` and prioritizes the driest waiting
-zone. This is only a deterministic edge-model check, not a claim that the final
-Pi scheduler or Central/Manifold firmware has been implemented.
+zone. This is only a deterministic edge-model check. The Pi runtime and
+Central firmware are implemented below, but remain local-tested/build-tested
+until they pass HIL on the borrowed boards.
 
 Live mode requires `COREIOT_MQTT_HOST`, `COREIOT_MQTT_PORT`,
 `COREIOT_MQTT_TLS` and `COREIOT_GATEWAY_TOKEN` in the process environment.
@@ -134,8 +135,8 @@ samples.
 
 ## HIL and Raspberry Pi runtime
 
-`gateway_runtime.py` is the non-simulated entry point. It accepts only
-`HIL_FIELD1_3BOARD` or `HARDWARE_TWO_FIELD`, uses `UartEspNowAdapter`, and
+`gateway_runtime.py` is the non-simulated entry point. It accepts
+`HIL_FIELD1_3BOARD`, `HIL_TWO_FIELD_4BOARD` or `HARDWARE_TWO_FIELD`, uses `UartEspNowAdapter`, and
 changes actual valve/pump output only after a CRC-valid Central ACK. Three
 attempts fit inside a three-second ACK deadline; failure is `REJECTED` with
 detail `ACK_TIMEOUT`. Central remains responsible for valve-before-pump start,
@@ -146,13 +147,22 @@ pump-before-valve stop and the 15-second lease.
 $env:SMARTFARM_SERIAL_PORT = "COM5"
 py -3 implementation\gateway\gateway_runtime.py `
   --config implementation\gateway\config\devices.v23.hil-field1.json
+
+# Four-board, two-Field HIL: two synthetic Sensors, Bridge and shared LED Central
+py -3 implementation\gateway\gateway_runtime.py `
+  --config implementation\gateway\config\devices.v23.hil-two-field-4board.json
 ```
 
-HIL connects only the six mapped Field 1/site devices after a physical peer is
-observed; Field 2 stays disabled/offline. The final template requires two
-Sensor Nodes and all 16 mapped devices. Runtime diagnostics publish
+The legacy three-board HIL connects only mapped Field 1/site devices. The
+four-board HIL requires two Sensor Nodes and maps all 16 logical devices while
+keeping sensor values synthetic and actuator outputs LED/GPIO. Runtime diagnostics publish
 `runtimeMode`, `sensorDataOrigin`, `actuatorBackend` and `evidenceClass` so SIM,
 HIL and final hardware evidence cannot be silently mixed.
+
+`HARDWARE_TWO_FIELD` starts with `evidenceClass=HARDWARE-UNVERIFIED`.
+`finalHardwareVerified=true` is a commissioning latch, not a development
+shortcut; set it only after the complete two-Field physical acceptance suite
+passes.
 
 Small control state is atomically persisted under `SMARTFARM_STATE_DIR` (Pi
 default `/var/lib/smartfarm-gateway`): schedules, last-known-valid Field config
@@ -166,6 +176,13 @@ until a validated persisted/cloud config exists. With NTP required, timestamped
 ON/schedule requests remain blocked until the clock is synchronized; OFF
 remains available.
 
-The Field 1 pilot config uses `controlAuthority=MIXED` with an explicit entry
-for every zone. Field 1 is `LOCAL`; Field 2 is `COREIOT_REQUEST`. The full
-two-Field config uses v2.3 profiles and `LOCAL` authority for both zones.
+The legacy SIM Field 1 pilot config still uses `controlAuthority=MIXED` for
+rollback testing only. All HIL/hardware profiles require `LOCAL` authority for
+every mapped Field; the legacy HIL profile maps only Field 1 and the final template
+maps both Fields. `HIL_TWO_FIELD_4BOARD` also maps both Fields without making a
+physical sensor/relay claim.
+
+Two-Field Gateway configs accept `maxConcurrentZones=1|2`. The four-board HIL
+defaults to `2`, while `1` remains the arbitration/handoff mode. Central has a
+hard cap of two, per-zone leases and keeps the shared pump ON when one valve
+stops while the other remains active.

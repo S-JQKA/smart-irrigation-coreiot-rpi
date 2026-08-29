@@ -3,6 +3,7 @@
 *.py[cod]
 .pytest_cache/
 **/.pio/
+**/.runtime/
 
 # Local workspace and internal planning history
 .agents/

@@ -431,13 +431,9 @@ class GatewayLocalScheduleTest(unittest.TestCase):
         )
 
         runtime_path = Path("runtime-schedules.json")
-        with (
-            patch.object(Path, "mkdir"),
-            patch.object(Path, "write_text") as write_text,
-            patch.object(Path, "replace"),
-        ):
+        with patch("simulator_v23.AtomicJsonFile.save") as save:
             runner.persist(runtime_path)
-        persisted = json.loads(write_text.call_args.args[0])
+        persisted = save.call_args.args[0]
         saved = next(
             item for item in persisted["localSchedules"] if item["id"] == "field-1-restart"
         )
@@ -552,6 +548,8 @@ class GatewayField1PilotTest(unittest.TestCase):
 
         model.zone_runtime["field-1"].manual_off_until_ms = now_ms + 11_000
         model.tick(timestamp=now_ms + 12_000, local_control_zones={"field-1"})
+        self.assertEqual("OFF", field1.valve_state)
+        model.tick(timestamp=now_ms + 13_000, local_control_zones={"field-1"})
         self.assertEqual("ON", field1.valve_state)
 
     def test_manual_on_is_rejected_by_tank_low_hard_interlock(self) -> None:
@@ -705,11 +703,13 @@ class GatewayRpcAuthorityTest(unittest.TestCase):
 
 
 class GatewayTwoFieldV23Test(unittest.TestCase):
-    def load_model(self) -> SimulationModelV23:
-        config = json.loads(
+    def load_config(self) -> dict:
+        return json.loads(
             (GATEWAY_DIR / "config" / "devices.v23.example.json").read_text(encoding="utf-8")
         )
-        return SimulationModelV23.from_config(config)
+
+    def load_model(self) -> SimulationModelV23:
+        return SimulationModelV23.from_config(self.load_config())
 
     def test_two_fields_obey_priority_single_slot_and_handoff(self) -> None:
         model = self.load_model()
@@ -747,6 +747,12 @@ class GatewayTwoFieldV23Test(unittest.TestCase):
         model.tick(timestamp=1_800_000_000_000)
         self.assertEqual({"ON"}, {zone.valve_state for zone in model.zones.values()})
         self.assertEqual("ON", model.site.pump_state)
+
+    def test_concurrency_config_rejects_values_outside_one_or_two(self) -> None:
+        config = self.load_config()
+        config["simulation"]["maxConcurrentZones"] = 3
+        with self.assertRaisesRegex(ValueError, "must be 1 or 2"):
+            SimulationModelV23.from_config(config)
 
     def test_max_duration_forces_valve_and_pump_off(self) -> None:
         model = self.load_model()

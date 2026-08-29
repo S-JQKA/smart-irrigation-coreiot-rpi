@@ -24,6 +24,7 @@ from coreiot.gateway_client import GatewayClient
 from coreiot.gateway_protocol import RpcCommand, requested_run_duration_seconds
 from simulator_v22 import SimulationModel, load_config, settings_from_env, utc_ms
 from runtime_state import (
+    AtomicJsonFile,
     FieldConfigStore,
     PersistentCommandLedger,
     clock_is_ready,
@@ -49,6 +50,7 @@ HARD_STOP_REASONS = {
     "MANUAL_ON_TTL_EXPIRED",
     "ZONE_FLOW_LOW",
     "CONTROLLER_OFFLINE",
+    "SYSTEM_SAFE_IDLE",
 }
 
 
@@ -83,6 +85,12 @@ class ZoneRuntime:
     sensor_node_id: str = ""
     expected_sensors: int = 4
     min_valid_sensors: int = 3
+    last_sensor_sequence: int = -1
+    last_debounce_sequence: int = -1
+    off_reassert_pending: bool = False
+    off_reassert_last_ms: int = 0
+    flow_state_known: bool = False
+    config_validated: bool = False
 
 
 @dataclass(frozen=True)
@@ -357,10 +365,7 @@ class LocalScheduleRunner:
                 for item in schedules
             ],
         }
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(path.suffix + ".tmp")
-        temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        temporary.replace(path)
+        AtomicJsonFile(path).save(payload)
 
     def dispatch_due(
         self,
@@ -502,6 +507,14 @@ def apply_field_configuration_attribute(
     if not updates:
         return None
 
+    runtime = model.zone_runtime[target.zone_id]
+    if (
+        not model.simulate_physics
+        and not runtime.config_validated
+        and set(updates) != set(FIELD_CONFIGURATION_ATTRIBUTES)
+    ):
+        return False, "INCOMPLETE_INITIAL_CONFIG"
+
     current = effective_field_config(model, target.zone_id)
     candidate = {**current, **updates}
     mode = candidate.get("controlMode")
@@ -531,7 +544,7 @@ def apply_field_configuration_attribute(
     combined = {**_threshold_mapping(model._limits_for(target.zone_id)), **candidate}
     model.zone_limits[target.zone_id] = IrrigationThresholds.from_mapping(combined)
     target.control_mode = mode
-    runtime = model.zone_runtime[target.zone_id]
+    runtime.config_validated = True
     if mode == "DISABLED" and target.valve_state == "ON":
         model._set_valve(target.zone_id, "OFF", "CONTROL_DISABLED", now_ms)
         model._sync_pump_with_transition()
@@ -542,7 +555,11 @@ def apply_field_configuration_attribute(
         runtime.below_min_samples = 0
 
     if store is not None:
-        store.save({zone_id: effective_field_config(model, zone_id) for zone_id in model.zones})
+        store.save({
+            zone_id: effective_field_config(model, zone_id)
+            for zone_id in model.zones
+            if model.zone_runtime[zone_id].config_validated
+        })
     return True, "CONFIG_APPLIED"
 
 
@@ -615,6 +632,18 @@ def apply_local_schedule_attribute(
 class SimulationModelV23(SimulationModel):
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> "SimulationModelV23":
+        simulation = config.get("simulation", {})
+        raw_concurrency = (
+            simulation.get("maxConcurrentZones", 1)
+            if isinstance(simulation, dict)
+            else 1
+        )
+        if (
+            not isinstance(raw_concurrency, int)
+            or isinstance(raw_concurrency, bool)
+            or raw_concurrency not in {1, 2}
+        ):
+            raise ValueError("simulation.maxConcurrentZones must be 1 or 2")
         base = SimulationModel.from_config(config)
         model = cls(
             zones=base.zones,
@@ -623,7 +652,7 @@ class SimulationModelV23(SimulationModel):
             rng=base.rng,
             interval_seconds=base.interval_seconds,
         )
-        sim = config.get("simulation", {})
+        sim = simulation
         model.limits = IrrigationThresholds.from_mapping(sim.get("thresholds", {}))
         base_thresholds = sim.get("thresholds", {})
         model.zone_limits = {
@@ -668,6 +697,10 @@ class SimulationModelV23(SimulationModel):
         model.cloud_connected = True
         model.cloud_disconnected_since_ms = 0
         model.cloud_reconnect_count = 0
+        model.startup_safe_confirmed = True
+        model.required_config_zones: set[str] = set()
+        for runtime in model.zone_runtime.values():
+            runtime.config_validated = True
         return model
 
     def attach_hardware_adapter(
@@ -689,6 +722,8 @@ class SimulationModelV23(SimulationModel):
         self.evidence_class = adapter.evidence_class
         self.controller_state = "OFFLINE"
         self.controller_last_seen_ms = 0
+        self.tank_state_known = False
+        self.startup_safe_confirmed = False
         self.site.pump_state = "OFF"
         self.site.system_mode = "SAFE-IDLE"
         for zone_id, zone in self.zones.items():
@@ -696,6 +731,7 @@ class SimulationModelV23(SimulationModel):
             zone.control_mode = "DISABLED"
             runtime = self.zone_runtime[zone_id]
             runtime.data_quality = "INVALID"
+            runtime.config_validated = False
             runtime.last_sensor_update_ms = 0
             runtime.soil_samples = ()
             runtime.expected_sensors = max(1, int(expected_sensors.get(zone_id, 4)))
@@ -718,12 +754,8 @@ class SimulationModelV23(SimulationModel):
             valid = tuple(value for value in event.soil_moisture if 0 <= value <= 100)
             runtime.sensor_node_id = event.node_id
             runtime.soil_samples = valid[: runtime.expected_sensors]
+            runtime.last_sensor_sequence = event.sequence
             runtime.last_sensor_update_ms = event.received_at_ms
-            if len(runtime.soil_samples) >= runtime.min_valid_sensors:
-                zone.moisture = sum(runtime.soil_samples) / len(runtime.soil_samples)
-                runtime.data_quality = "OK"
-            else:
-                runtime.data_quality = "INVALID"
             if event.air_temp is not None:
                 runtime.air_temp = event.air_temp
             if event.air_humidity is not None:
@@ -734,6 +766,7 @@ class SimulationModelV23(SimulationModel):
                 runtime.vpd = self._calculate_vpd(event.air_temp, event.air_humidity)
             if event.flow_rate_lpm is not None:
                 runtime.last_flow_rate = event.flow_rate_lpm
+                runtime.flow_state_known = True
             if event.pulse_counter is not None:
                 previous = zone.pulse_counter
                 zone.pulse_counter = max(previous, event.pulse_counter)
@@ -741,18 +774,33 @@ class SimulationModelV23(SimulationModel):
                 if zone.valve_state == "ON":
                     zone.water_used += delta_liters
                     runtime.daily_water_liters += delta_liters
-            if event.tank_low is not None:
-                self.site.tank_low_switch = event.tank_low
+            if (
+                len(runtime.soil_samples) >= runtime.min_valid_sensors
+                and runtime.flow_state_known
+                and self.tank_state_known
+            ):
+                zone.moisture = sum(runtime.soil_samples) / len(runtime.soil_samples)
+                runtime.data_quality = "OK"
+            else:
+                runtime.data_quality = "INVALID"
             return
         if isinstance(event, PeerStatus) and event.role.upper() == "CENTRAL":
             self.controller_state = "ONLINE" if event.online else "OFFLINE"
             self.controller_last_seen_ms = event.received_at_ms
+            if event.tank_low is not None:
+                self.site.tank_low_switch = event.tank_low
+                self.tank_state_known = True
             if not event.online:
                 self.site.system_mode = "DEGRADED"
             return
         if isinstance(event, ActuatorAck):
-            self.controller_state = "ONLINE"
-            self.controller_last_seen_ms = event.received_at_ms
+            if event.reason == "ACK_TIMEOUT":
+                self.controller_state = "OFFLINE"
+                self.site.system_mode = "SAFE-IDLE"
+                self.site.safety_block_reason = "CONTROLLER_OFFLINE"
+            else:
+                self.controller_state = "ONLINE"
+                self.controller_last_seen_ms = event.received_at_ms
 
     def _limits_for(self, zone_id: str) -> IrrigationThresholds:
         return self.zone_limits.get(zone_id, self.limits)
@@ -776,6 +824,15 @@ class SimulationModelV23(SimulationModel):
     def _refresh_operation_mode(self, now_ms: int) -> None:
         if self.site.tank_low_switch:
             self.site.system_mode = "SAFE-IDLE"
+        elif not self.simulate_physics and not self.startup_safe_confirmed:
+            self.site.system_mode = "SAFE-IDLE"
+            self.site.safety_block_reason = "STARTUP_NOT_CONFIRMED"
+        elif self.required_config_zones and any(
+            not self.zone_runtime[zone_id].config_validated
+            for zone_id in self.required_config_zones
+        ):
+            self.site.system_mode = "SAFE-IDLE"
+            self.site.safety_block_reason = "CONFIG_NOT_READY"
         elif not self.simulate_physics and self.controller_state != "ONLINE":
             self.site.system_mode = "SAFE-IDLE"
             self.site.safety_block_reason = "CONTROLLER_OFFLINE"
@@ -791,6 +848,15 @@ class SimulationModelV23(SimulationModel):
         if not self.site.tank_low_switch and self.site.safety_block_reason == "TANK_LOW":
             self.site.safety_block_reason = "NONE"
         if self.controller_state == "ONLINE" and self.site.safety_block_reason == "CONTROLLER_OFFLINE":
+            self.site.safety_block_reason = "NONE"
+        if (
+            self.startup_safe_confirmed
+            and all(
+                self.zone_runtime[zone_id].config_validated
+                for zone_id in self.required_config_zones
+            )
+            and self.site.safety_block_reason in {"STARTUP_NOT_CONFIRMED", "CONFIG_NOT_READY"}
+        ):
             self.site.safety_block_reason = "NONE"
 
     def _refresh_sensor_health(self, now_ms: int) -> None:
@@ -821,6 +887,14 @@ class SimulationModelV23(SimulationModel):
     def _update_debounce_counters(self) -> None:
         for zone_id, zone in self.zones.items():
             runtime = self.zone_runtime[zone_id]
+            if runtime.data_quality != "OK":
+                runtime.below_min_samples = 0
+                runtime.above_flood_samples = 0
+                continue
+            if not self.simulate_physics:
+                if runtime.last_sensor_sequence == runtime.last_debounce_sequence:
+                    continue
+                runtime.last_debounce_sequence = runtime.last_sensor_sequence
             limits = self._limits_for(zone_id)
             runtime.below_min_samples = (
                 runtime.below_min_samples + 1 if zone.moisture < limits.min_moisture else 0
@@ -956,6 +1030,8 @@ class SimulationModelV23(SimulationModel):
         reason: str,
         now_ms: int,
         command_id: str | None = None,
+        *,
+        force_hardware: bool = False,
     ) -> bool:
         zone = self.zones[zone_id]
         runtime = self.zone_runtime[zone_id]
@@ -963,7 +1039,10 @@ class SimulationModelV23(SimulationModel):
         if generated_transition:
             runtime.transition_sequence += 1
         effective_command_id = command_id or f"local-{zone_id}-{runtime.transition_sequence}"
-        if self.hardware_adapter is not None and generated_transition:
+        issue_hardware_command = self.hardware_adapter is not None and (
+            generated_transition or force_hardware
+        )
+        if issue_hardware_command:
             ack = self.hardware_adapter.set_zone(
                 zone_id,
                 state,
@@ -973,6 +1052,8 @@ class SimulationModelV23(SimulationModel):
             self.ingest_hardware_event(ack)
             zone.last_command_id = effective_command_id
             if not ack.accepted:
+                if state == "OFF" or ack.reason == "ACK_TIMEOUT":
+                    runtime.off_reassert_pending = True
                 zone.last_ack = "REJECTED"
                 zone.decision_reason = ack.reason
                 zone.safety_state = "BLOCKED"
@@ -983,6 +1064,11 @@ class SimulationModelV23(SimulationModel):
                 return False
             zone.valve_state = ack.valve_output
             self.site.pump_state = ack.pump_output
+            if state == "OFF":
+                runtime.off_reassert_pending = False
+                runtime.off_reassert_last_ms = now_ms
+            else:
+                runtime.off_reassert_pending = False
             zone.last_ack = "EXECUTED"
             self.site.last_command_id = effective_command_id
             self.site.last_ack = "EXECUTED"
@@ -1017,6 +1103,7 @@ class SimulationModelV23(SimulationModel):
             self.zone_runtime[zone_id].decision = decision
             if local_zone_ids is not None and zone_id not in local_zone_ids:
                 if decision.reason in HARD_STOP_REASONS and decision.action in {"STOP", "BLOCK"}:
+                    self.zone_runtime[zone_id].below_min_samples = 0
                     if decision.reason == "ZONE_FLOW_LOW":
                         self.zone_runtime[zone_id].flow_fault_latched = True
                     self._set_valve(zone_id, "OFF", decision.reason, now_ms)
@@ -1028,6 +1115,8 @@ class SimulationModelV23(SimulationModel):
                     zone.safety_block_reason = "NONE"
                 continue
             if decision.action in {"STOP", "BLOCK"}:
+                if decision.reason in HARD_STOP_REASONS:
+                    self.zone_runtime[zone_id].below_min_samples = 0
                 if decision.reason == "ZONE_FLOW_LOW":
                     self.zone_runtime[zone_id].flow_fault_latched = True
                 self._set_valve(zone_id, "OFF", decision.reason, now_ms)
@@ -1093,6 +1182,7 @@ class SimulationModelV23(SimulationModel):
         if not self.site.tank_low_switch:
             return
         for zone_id, zone in self.zones.items():
+            self.zone_runtime[zone_id].below_min_samples = 0
             if zone.valve_state == "ON":
                 self._set_valve(zone_id, "OFF", "TANK_LOW", now_ms)
             zone.safety_state = "BLOCKED"
@@ -1108,6 +1198,7 @@ class SimulationModelV23(SimulationModel):
             decision = self._evaluate_zone(zone_id, now_ms)
             self.zone_runtime[zone_id].decision = decision
             if decision.reason in HARD_STOP_REASONS and decision.action in {"STOP", "BLOCK"}:
+                self.zone_runtime[zone_id].below_min_samples = 0
                 if decision.reason == "ZONE_FLOW_LOW":
                     self.zone_runtime[zone_id].flow_fault_latched = True
                 self._set_valve(zone_id, "OFF", decision.reason, now_ms)
@@ -1141,6 +1232,7 @@ class SimulationModelV23(SimulationModel):
                         "MANUAL_PUMP_OFF",
                         now_ms,
                         f"{command.command_id}-{zone_id}",
+                        force_hardware=True,
                     )
                     all_stopped = all_stopped and stopped
                 self._sync_pump_with_transition()
@@ -1188,6 +1280,7 @@ class SimulationModelV23(SimulationModel):
                 "MANUAL_OFF",
                 now_ms,
                 command.command_id,
+                force_hardware=True,
             )
             self._sync_pump_with_transition()
             if not stopped:
@@ -1217,6 +1310,8 @@ class SimulationModelV23(SimulationModel):
         if reason == "NONE" and active_other >= self.site.max_concurrent_zones:
             reason = "MAX_CONCURRENT_ZONES"
         if reason != "NONE":
+            if reason in HARD_STOP_REASONS:
+                runtime.below_min_samples = 0
             if source == "SCHEDULER":
                 self._scheduled_task(
                     target.zone_id, command, now_ms, requested_duration, "REJECTED", reason

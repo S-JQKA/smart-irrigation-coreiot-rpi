@@ -1,0 +1,48 @@
+[
+  {
+    "commandId": "cmd-7",
+    "crc16": 14110,
+    "leaseMs": 15000,
+    "sequence": 7,
+    "state": "ON",
+    "type": "SET_ZONE",
+    "version": 1,
+    "zoneId": "field-1"
+  },
+  {
+    "accepted": true,
+    "commandId": "cmd-7",
+    "crc16": 50227,
+    "pumpOutput": "ON",
+    "reason": "EXECUTED",
+    "sequence": 7,
+    "type": "ACK",
+    "valveOutput": "ON",
+    "version": 1,
+    "zoneId": "field-1"
+  },
+  {
+    "airHumidityCentiPct": 6000,
+    "airTempCentiC": 2900,
+    "crc16": 54351,
+    "flowMilliLpm": 1000,
+    "lightLux": 18000,
+    "nodeId": "sensor-field-1",
+    "pulseCounter": 5,
+    "sequence": 1,
+    "soilCentiPct": [2510],
+    "tankLow": false,
+    "type": "SENSOR",
+    "version": 1,
+    "zoneId": "field-1"
+  },
+  {
+    "crc16": 22791,
+    "online": true,
+    "peerId": "central",
+    "role": "CENTRAL",
+    "tankLow": false,
+    "type": "PEER",
+    "version": 1
+  }
+]

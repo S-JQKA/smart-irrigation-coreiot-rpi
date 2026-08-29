@@ -34,7 +34,9 @@
     "serialPort": "COM5",
     "baudrate": 115200,
     "requireNtpSync": false,
+    "finalHardwareVerified": false,
     "hardwareZones": ["field-1"],
+    "sensorNodeZones": {"sensor-field-1": "field-1"},
     "mappedDevices": [
       "SI Soil Moisture 1",
       "SI Smart Valve 1",
@@ -46,8 +48,8 @@
     "expectedSensors": {"field-1": 1, "field-2": 4},
     "minValidSensors": {"field-1": 1, "field-2": 3},
     "peerDeviceMap": {
-      "sensor-field-1": ["SI Soil Moisture 1", "SF Env Sensor 1"],
-      "central": ["SI Smart Valve 1", "SI Water Meter 1", "SF Main Pump 1", "SF Manifold 1"]
+      "sensor-field-1": ["SI Soil Moisture 1", "SI Water Meter 1", "SF Env Sensor 1"],
+      "central": ["SI Smart Valve 1", "SF Main Pump 1", "SF Manifold 1"]
     }
   },
   "simulation": {

@@ -58,13 +58,15 @@ PowerShell timestamp helper:
 ## Test M2 — Positive Manual ON path
 
 1. Stop the previous process.
-2. Start the same topology with automatic decisions disabled globally for this RPC-only test:
+2. Start the same topology with final `LOCAL` authority:
 
    ```powershell
-   py -3 implementation\gateway\simulator_v23.py --config implementation\gateway\config\devices.v23.field1-pilot.json --control-authority COREIOT_REQUEST
+   py -3 implementation\gateway\simulator_v23.py --config implementation\gateway\config\devices.v23.example.json --control-authority LOCAL
    ```
 
-3. Confirm Valve 1 and pump are `OFF`.
+3. Set the Field 1 Smart Valve shared attribute `controlMode=MANUAL`, then
+   confirm Valve 1 and pump are `OFF`. This prevents AUTO from racing the
+   direct Manual RPC while retaining the same final authority boundary.
 4. Send method `TURN_ON` to `SI Smart Valve 1` with params:
 
    ```json

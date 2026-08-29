@@ -1,6 +1,7 @@
 import json
 import sys
 import threading
+import time
 import unittest
 from collections import deque
 from pathlib import Path
@@ -273,6 +274,50 @@ class GatewayClientRpcPolicyTest(unittest.TestCase):
         self.assertEqual(30, handled[0].params["latchSeconds"])
         self.assertTrue(replies[0][1])
         self.assertEqual("EXECUTED", replies[0][3])
+
+    def test_clock_gate_rejects_timestamped_on_but_keeps_off_available(self) -> None:
+        client, handled, replies = self.make_client()
+        detailed_replies = []
+        client.clock_ready = lambda: False
+        client.send_rpc_reply = lambda *args: detailed_replies.append(args)
+
+        self.deliver(
+            client,
+            {
+                "device": "SI Smart Valve 1",
+                "data": {
+                    "id": 4,
+                    "method": "TURN_ON",
+                    "params": {
+                        "commandId": "clock-on-4",
+                        "source": "MANUAL",
+                        "requestedAt": 1_800_000_000_000,
+                        "ttlSeconds": 30,
+                        "runDurationSeconds": 60,
+                    },
+                },
+            },
+        )
+        self.assertEqual([], handled)
+        self.assertEqual("CLOCK_NOT_READY", detailed_replies[0][4])
+
+        self.deliver(
+            client,
+            {
+                "device": "SI Smart Valve 1",
+                "data": {
+                    "id": 5,
+                    "method": "TURN_OFF",
+                    "params": {
+                        "commandId": "clock-off-5",
+                        "source": "MANUAL",
+                        "requestedAt": int(time.time() * 1000),
+                        "ttlSeconds": 30,
+                    },
+                },
+            },
+        )
+        self.assertEqual(1, len(handled))
 
 
 if __name__ == "__main__":

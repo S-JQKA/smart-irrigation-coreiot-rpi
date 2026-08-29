@@ -346,10 +346,14 @@ class GatewayClient:
                     )
                     self.send_rpc_reply(command, False, "OFF", "INVALID_COMMAND")
                     return
+                clock_is_ready = (
+                    self.clock_ready()
+                    if getattr(self, "clock_ready", None) is not None
+                    else True
+                )
                 if (
-                    getattr(self, "clock_ready", None) is not None
+                    not clock_is_ready
                     and command.method in {"TURN_ON", "SET_LOCAL_SCHEDULE"}
-                    and not self.clock_ready()
                 ):
                     LOG.warning(
                         "rpc rejected commandId=%s reason=CLOCK_NOT_READY",
@@ -363,7 +367,14 @@ class GatewayClient:
                         "CLOCK_NOT_READY",
                     )
                     return
-                guard_result = self.guard.evaluate(command, require_metadata=True)
+                guard_result = self.guard.evaluate(
+                    command,
+                    require_metadata=True,
+                    # A stale or future OFF is fail-safe.  When the Pi clock is
+                    # invalid, retain metadata/dedup checks but do not block the
+                    # only cloud action that may reduce physical risk.
+                    ignore_timestamp=not clock_is_ready and command.method == "TURN_OFF",
+                )
                 if guard_result != "ACCEPT":
                     LOG.warning("rpc rejected commandId=%s reason=%s", command.command_id, guard_result)
                     self.send_rpc_reply(command, False, "OFF", guard_result)

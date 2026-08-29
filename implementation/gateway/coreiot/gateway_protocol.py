@@ -207,6 +207,7 @@ class RpcGuard:
         command: RpcCommand,
         now_ms: int | None = None,
         require_metadata: bool = False,
+        ignore_timestamp: bool = False,
     ) -> str:
         now_ms = int(time.time() * 1000) if now_ms is None else now_ms
         command_id = command.command_id
@@ -224,7 +225,7 @@ class RpcGuard:
                 return "INVALID_COMMAND"
             if ttl_seconds < 1 or ttl_seconds > 3600:
                 return "INVALID_COMMAND"
-            if requested_at > now_ms + 30_000:
+            if not ignore_timestamp and requested_at > now_ms + 30_000:
                 return "INVALID_COMMAND"
             if source in {"MANUAL", "SCHEDULER"} and command.method == "TURN_ON":
                 duration = requested_run_duration_seconds(command)
@@ -233,7 +234,11 @@ class RpcGuard:
                     return "INVALID_COMMAND"
             if command.method == "SET_LOCAL_SCHEDULE" and source != "MANUAL":
                 return "INVALID_COMMAND"
-        if isinstance(requested_at, (int, float)) and isinstance(ttl_seconds, (int, float)):
+        if (
+            not ignore_timestamp
+            and isinstance(requested_at, (int, float))
+            and isinstance(ttl_seconds, (int, float))
+        ):
             if now_ms > int(requested_at) + int(ttl_seconds * 1000):
                 return "EXPIRED"
         self._ledger.record(command_id)

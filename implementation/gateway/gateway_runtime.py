@@ -11,14 +11,13 @@ import time
 from pathlib import Path
 from typing import Any
 
-from analytics_hook import NoOpAnalyticsHook, safe_evaluate
+from analytics_hook import AdvisoryAnalyticsRunner, NoOpAnalyticsHook
 from coreiot.gateway_client import GatewayClient
 from coreiot.gateway_protocol import RpcCommand
-from hardware_adapter import ActuatorAck, PeerStatus, SensorSample
+from hardware_adapter import PeerStatus, SensorSample
 from runtime_state import FieldConfigStore, PersistentCommandLedger, clock_is_ready, runtime_state_dir
 from simulator_v22 import load_config, settings_from_env, utc_ms
 from simulator_v23 import (
-    FIELD_CONFIGURATION_ATTRIBUTES,
     LOCAL_SCHEDULE_ATTRIBUTE,
     SHARED_ATTRIBUTE_WATCHES,
     LocalScheduleRunner,
@@ -49,31 +48,104 @@ def _restore_schedules(
     except (OSError, json.JSONDecodeError):
         LOG.warning("Ignoring unreadable schedule state path=%s", path, exc_info=True)
         return config
+    if not isinstance(payload, dict) or not isinstance(payload.get("localSchedules", []), list):
+        LOG.warning("Ignoring malformed schedule state path=%s", path)
+        return config
     restored: list[dict[str, Any]] = []
+    stale_one_shots: list[dict[str, Any]] = []
     for item in payload.get("localSchedules", []):
         if not isinstance(item, dict):
             continue
         start_at_ms = item.get("startAtMs")
         if not isinstance(start_at_ms, int) or isinstance(start_at_ms, bool):
             continue
-        repeat_every = int(item.get("repeatEverySeconds") or 0)
+        schedule_id = item.get("id")
+        zone_id = item.get("zoneId")
+        duration = item.get("durationSeconds")
+        repeat_every = item.get("repeatEverySeconds") or 0
+        enabled = item.get("enabled", True)
+        if (
+            not isinstance(schedule_id, str)
+            or not schedule_id
+            or not isinstance(zone_id, str)
+            or not zone_id
+            or not isinstance(duration, int)
+            or isinstance(duration, bool)
+            or duration < 1
+            or not isinstance(repeat_every, int)
+            or isinstance(repeat_every, bool)
+            or repeat_every < 0
+            or (repeat_every and repeat_every < duration)
+            or not isinstance(enabled, bool)
+        ):
+            continue
         if start_at_ms < now_ms and repeat_every > 0:
             interval_ms = repeat_every * 1000
             missed = ((now_ms - start_at_ms) // interval_ms) + 1
             start_at_ms += missed * interval_ms
         if start_at_ms < now_ms:
             LOG.info("Ignoring stale one-shot schedule id=%s", item.get("id"))
+            stale_one_shots.append(dict(item))
             continue
         restored.append({
-            "id": item.get("id"),
-            "zoneId": item.get("zoneId"),
+            "id": schedule_id,
+            "zoneId": zone_id,
             "configId": item.get("configId"),
-            "enabled": item.get("enabled", True),
+            "enabled": enabled,
             "startAfterSeconds": max(0, int((start_at_ms - now_ms) / 1000)),
-            "durationSeconds": item.get("durationSeconds"),
+            "durationSeconds": duration,
             "repeatEverySeconds": repeat_every or None,
         })
-    return {**config, "localSchedules": restored}
+    return {
+        **config,
+        "localSchedules": restored,
+        "_staleOneShotSchedules": stale_one_shots,
+    }
+
+
+def _load_schedule_runner(
+    config: dict[str, Any],
+    path: Path,
+    model: SimulationModelV23,
+    now_ms: int,
+) -> LocalScheduleRunner:
+    restored = _restore_schedules(config, path, now_ms)
+    if "_staleOneShotSchedules" in restored:
+        valid_schedules: list[dict[str, Any]] = []
+        seen_ids: set[str] = set()
+        for item in restored.get("localSchedules", []):
+            zone_id = item.get("zoneId")
+            schedule_id = item.get("id")
+            if zone_id not in model.zones or schedule_id in seen_ids:
+                continue
+            maximum = min(
+                model.manual_on_max_seconds,
+                int(model._limits_for(zone_id).max_duration_seconds),
+            )
+            if int(item.get("durationSeconds", 0)) > maximum:
+                continue
+            seen_ids.add(schedule_id)
+            valid_schedules.append(item)
+        restored = {**restored, "localSchedules": valid_schedules}
+    runner = LocalScheduleRunner.from_config(restored, model, now_ms)
+    for item in restored.get("_staleOneShotSchedules", []):
+        zone = model.zones.get(str(item.get("zoneId", "")))
+        if zone is None:
+            continue
+        runner.update_from_config(
+            model,
+            zone.valve_device,
+            {
+                "scheduleId": item.get("id"),
+                "enabled": True,
+                "startAtMs": item.get("startAtMs"),
+                "durationSeconds": item.get("durationSeconds"),
+                "repeatEverySeconds": 0,
+            },
+            str(item.get("configId") or f"restored-{item.get('id', 'schedule')}"),
+            now_ms,
+        )
+    return runner
 
 
 def _rpc_detail(model: SimulationModelV23, command: RpcCommand) -> str | None:
@@ -85,6 +157,94 @@ def _rpc_detail(model: SimulationModelV23, command: RpcCommand) -> str | None:
     return None if detail in {"", "NONE"} else detail
 
 
+def _enforce_hardware_zone_modes(
+    model: SimulationModelV23,
+    hardware_zones: tuple[str, ...],
+) -> None:
+    """Keep non-physical Fields disabled even when persisted state is restored."""
+
+    for zone_id, zone in model.zones.items():
+        if zone_id not in hardware_zones:
+            zone.control_mode = "DISABLED"
+
+
+def _validate_runtime_mapping(
+    config: dict[str, Any],
+    runtime: dict[str, Any],
+    runtime_profile: str,
+) -> tuple[tuple[str, ...], tuple[str, ...], dict[str, str], dict[str, tuple[str, ...]]]:
+    """Reject profiles that could falsely announce logical devices as physical."""
+
+    devices = config.get("devices", [])
+    known_devices = {
+        str(item.get("name")): str(item.get("zoneId", ""))
+        for item in devices
+        if isinstance(item, dict) and item.get("name")
+    }
+    mapped_devices = tuple(str(value) for value in runtime.get("mappedDevices", []))
+    hardware_zones = tuple(str(value) for value in runtime.get("hardwareZones", []))
+    simulation = config.get("simulation", {})
+    raw_concurrency = simulation.get("maxConcurrentZones", 1) if isinstance(simulation, dict) else 1
+    if (
+        not isinstance(raw_concurrency, int)
+        or isinstance(raw_concurrency, bool)
+        or raw_concurrency not in {1, 2}
+    ):
+        raise ValueError("simulation.maxConcurrentZones must be 1 or 2")
+    if (
+        not mapped_devices
+        or len(set(mapped_devices)) != len(mapped_devices)
+        or any(device not in known_devices for device in mapped_devices)
+    ):
+        raise ValueError("runtime.mappedDevices must contain unique configured devices")
+    if not hardware_zones or len(set(hardware_zones)) != len(hardware_zones):
+        raise ValueError("runtime.hardwareZones must contain unique Fields")
+    if raw_concurrency > len(hardware_zones):
+        raise ValueError("simulation.maxConcurrentZones exceeds mapped hardware Fields")
+
+    raw_peer_map = runtime.get("peerDeviceMap", {})
+    if not isinstance(raw_peer_map, dict) or not raw_peer_map:
+        raise ValueError("runtime.peerDeviceMap is required")
+    peer_device_map: dict[str, tuple[str, ...]] = {}
+    owners: dict[str, str] = {}
+    for peer, raw_devices in raw_peer_map.items():
+        peer_id = str(peer)
+        if not peer_id or not isinstance(raw_devices, list):
+            raise ValueError("runtime.peerDeviceMap entries must be device lists")
+        peer_devices = tuple(str(device) for device in raw_devices)
+        for device in peer_devices:
+            if device in owners:
+                raise ValueError(f"mapped device has multiple physical owners: {device}")
+            owners[device] = peer_id
+        peer_device_map[peer_id] = peer_devices
+    if set(owners) != set(mapped_devices):
+        raise ValueError("peerDeviceMap must own every mapped device exactly once")
+
+    raw_sensor_nodes = runtime.get("sensorNodeZones", {})
+    if not isinstance(raw_sensor_nodes, dict) or not raw_sensor_nodes:
+        raise ValueError("runtime.sensorNodeZones is required")
+    sensor_node_zones = {str(key): str(value) for key, value in raw_sensor_nodes.items()}
+    if any(node not in peer_device_map for node in sensor_node_zones):
+        raise ValueError("every sensor node must have a peerDeviceMap entry")
+    if set(sensor_node_zones.values()) != set(hardware_zones):
+        raise ValueError("every hardware Field requires a mapped Sensor Node")
+
+    if runtime_profile == "HIL_FIELD1_3BOARD":
+        if hardware_zones != ("field-1",):
+            raise ValueError("three-board HIL may map only field-1")
+        if any(known_devices[device] == "field-2" for device in mapped_devices):
+            raise ValueError("three-board HIL cannot announce Field 2 devices")
+    elif runtime_profile in {"HIL_TWO_FIELD_4BOARD", "HARDWARE_TWO_FIELD"}:
+        if set(hardware_zones) != {"field-1", "field-2"}:
+            raise ValueError("two-Field hardware/HIL profile requires both Fields")
+        if set(mapped_devices) != set(known_devices):
+            raise ValueError("two-Field hardware/HIL profile must map the complete topology")
+        if len(sensor_node_zones) < 2:
+            raise ValueError("two-Field hardware/HIL profile requires at least two Sensor Nodes")
+
+    return mapped_devices, hardware_zones, sensor_node_zones, peer_device_map
+
+
 def run(
     config_path: Path,
     *,
@@ -94,8 +254,15 @@ def run(
 ) -> None:
     config = load_config(config_path)
     runtime_profile = str(config.get("runtimeProfile", "")).upper()
-    if runtime_profile not in {"HIL_FIELD1_3BOARD", "HARDWARE_TWO_FIELD"}:
-        raise ValueError("gateway_runtime.py requires HIL_FIELD1_3BOARD or HARDWARE_TWO_FIELD")
+    if runtime_profile not in {
+        "HIL_FIELD1_3BOARD",
+        "HIL_TWO_FIELD_4BOARD",
+        "HARDWARE_TWO_FIELD",
+    }:
+        raise ValueError(
+            "gateway_runtime.py requires HIL_FIELD1_3BOARD, "
+            "HIL_TWO_FIELD_4BOARD or HARDWARE_TWO_FIELD"
+        )
     if str(config.get("controlAuthority", "LOCAL")).upper() != "LOCAL":
         raise ValueError("hardware runtime requires LOCAL authority for every Field")
     runtime = config.get("runtime")
@@ -103,49 +270,57 @@ def run(
         raise ValueError("hardware runtime configuration is required")
     serial_port_env = str(runtime.get("serialPortEnv", "SMARTFARM_SERIAL_PORT")).strip()
     serial_port = os.getenv(serial_port_env, str(runtime.get("serialPort", ""))).strip()
-    mapped_devices = tuple(str(value) for value in runtime.get("mappedDevices", []))
-    if not serial_port or not mapped_devices:
-        raise ValueError("runtime.serialPort and runtime.mappedDevices are required")
+    if not serial_port:
+        raise ValueError("runtime.serialPort is required")
+    mapped_devices, hardware_zones, sensor_node_zones, peer_device_map = (
+        _validate_runtime_mapping(config, runtime, runtime_profile)
+    )
 
     state_directory = runtime_state_dir(config_path, runtime_profile)
     schedule_path = state_directory / "schedules.json"
     now_ms = utc_ms()
-    config = _restore_schedules(config, schedule_path, now_ms)
     model = SimulationModelV23.from_config(config)
     if interval is not None:
         model.interval_seconds = interval
     expected = runtime.get("expectedSensors", {})
     minimum = runtime.get("minValidSensors", {})
-    hardware_zones = tuple(str(value) for value in runtime.get("hardwareZones", model.zones))
-    if not hardware_zones or any(zone_id not in model.zones for zone_id in hardware_zones):
+    if any(zone_id not in model.zones for zone_id in hardware_zones):
         raise ValueError("runtime.hardwareZones contains an unknown Field")
     adapter = UartEspNowAdapter(
         serial_port,
         hardware_zones,
         runtime_profile=runtime_profile,
         baudrate=int(runtime.get("baudrate", 115_200)),
+        sensor_node_zones=sensor_node_zones,
     )
+    if runtime_profile == "HARDWARE_TWO_FIELD" and runtime.get("finalHardwareVerified") is True:
+        adapter.evidence_class = "FINAL-HARDWARE"
     model.attach_hardware_adapter(
         adapter,
         expected_sensors=expected if isinstance(expected, dict) else {},
         min_valid_sensors=minimum if isinstance(minimum, dict) else {},
     )
+    model.required_config_zones = set(hardware_zones)
     field_store = FieldConfigStore(state_directory / "field-config.json")
     restore_field_configuration(model, field_store.load(), now_ms)
-    scheduler = LocalScheduleRunner.from_config(config, model, now_ms)
+    # A state directory may outlive a profile change.  Never let an old
+    # last-known-valid config re-enable a Field that has no physical zone in
+    # the active HIL/hardware mapping.
+    _enforce_hardware_zone_modes(model, hardware_zones)
     require_ntp = bool(runtime.get("requireNtpSync", True))
     is_clock_ready = lambda: clock_is_ready(require_ntp=require_ntp)  # noqa: E731
-    analytics = NoOpAnalyticsHook()
+    schedule_loaded = is_clock_ready()
+    scheduler = (
+        _load_schedule_runner(config, schedule_path, model, now_ms)
+        if schedule_loaded
+        else LocalScheduleRunner.from_config({**config, "localSchedules": []}, model, now_ms)
+    )
+    analytics = AdvisoryAnalyticsRunner(NoOpAnalyticsHook())
 
     profile_by_device = {
         item["name"]: item.get("profile")
         for item in config["devices"]
         if item["name"] in mapped_devices
-    }
-    peer_device_map = {
-        str(peer): tuple(str(device) for device in devices if str(device) in profile_by_device)
-        for peer, devices in runtime.get("peerDeviceMap", {}).items()
-        if isinstance(devices, list)
     }
     peer_last_seen: dict[str, int] = {}
     connected_devices: set[str] = set()
@@ -163,6 +338,14 @@ def run(
         return apply_rpc_with_authority(model, command, "LOCAL", {})
 
     def handle_attributes(body: dict[str, Any]) -> None:
+        target_device = str(body.get("device", ""))
+        if target_device not in mapped_devices:
+            LOG.warning(
+                "attribute ignored device=%s reason=DEVICE_NOT_MAPPED profile=%s",
+                target_device,
+                runtime_profile,
+            )
+            return
         applied = apply_field_configuration_attribute(model, body, utc_ms(), field_store)
         if applied is not None:
             accepted, reason = applied
@@ -180,6 +363,12 @@ def run(
                     ),
                 ) if any(zone.valve_device == body.get("device") for zone in model.zones.values()) else {},
             )
+        raw_value = body.get("value")
+        if isinstance(raw_value, str):
+            try:
+                raw_value = json.loads(raw_value)
+            except json.JSONDecodeError:
+                raw_value = None
         contains_schedule = any(
             LOCAL_SCHEDULE_ATTRIBUTE in scope
             for scope in (
@@ -188,7 +377,11 @@ def run(
                 body.get("shared", {}) if isinstance(body.get("shared"), dict) else {},
                 body.get("values", {}) if isinstance(body.get("values"), dict) else {},
             )
-        ) or ("value" in body and len(SHARED_ATTRIBUTE_WATCHES) == 1)
+        ) or (
+            isinstance(raw_value, dict)
+            and raw_value.get("schemaVersion") == 1
+            and "scheduleId" in raw_value
+        )
         if not contains_schedule:
             return
         if not is_clock_ready():
@@ -204,31 +397,56 @@ def run(
         if client is not None and latest_readings:
             client.publish_telemetry(latest_readings)
 
-    if not offline:
-        client = GatewayClient(
-            settings_from_env(config),
-            handle_rpc,
-            attribute_handler=handle_attributes,
-            connection_handler=model.set_cloud_connected,
-            legacy_manual_off_allowed=lambda command: False,
-            command_ledger=PersistentCommandLedger(state_directory / "command-ledger.json"),
-            clock_ready=is_clock_ready,
-            rpc_detail_handler=lambda command: _rpc_detail(model, command),
-            reconnect_snapshot_handler=publish_snapshot,
-        )
-        client.start()
-        for zone in model.zones.values():
-            if zone.valve_device in mapped_devices:
-                client.watch_shared_attributes(zone.valve_device, SHARED_ATTRIBUTE_WATCHES)
-    else:
-        model.set_cloud_connected(False, now_ms=now_ms - int(model.cloud_loss_timeout_seconds * 1000))
-
     adapter.start()
-    startup_acks = adapter.all_off("gateway-startup-all-off")
+    startup_acks = adapter.all_off(f"gateway-startup-all-off-{time.time_ns()}")
     for ack in startup_acks:
         model.ingest_hardware_event(ack)
-    if not startup_acks or not all(ack.accepted for ack in startup_acks):
+        if not ack.accepted and ack.zone_id in model.zone_runtime:
+            model.zone_runtime[ack.zone_id].off_reassert_pending = True
+            model.zone_runtime[ack.zone_id].off_reassert_last_ms = now_ms
+    startup_state = adapter.query_state()
+    startup_outputs_off = (
+        startup_state.get("pump") == "OFF"
+        and set(startup_state.get("confirmedZones", ())) >= set(hardware_zones)
+        and all(state == "OFF" for state in startup_state.get("zones", {}).values())
+    )
+    model.startup_safe_confirmed = bool(
+        startup_acks
+        and all(ack.accepted for ack in startup_acks)
+        and startup_outputs_off
+    )
+    if (
+        not startup_acks
+        or not all(ack.accepted for ack in startup_acks)
+        or not startup_outputs_off
+    ):
         LOG.warning("Central did not confirm startup ALL_OFF; runtime remains SAFE-IDLE")
+
+    try:
+        if not offline:
+            client = GatewayClient(
+                settings_from_env(config),
+                handle_rpc,
+                attribute_handler=handle_attributes,
+                connection_handler=model.set_cloud_connected,
+                legacy_manual_off_allowed=lambda command: False,
+                command_ledger=PersistentCommandLedger(state_directory / "command-ledger.json"),
+                clock_ready=is_clock_ready,
+                rpc_detail_handler=lambda command: _rpc_detail(model, command),
+                reconnect_snapshot_handler=publish_snapshot,
+            )
+            client.start()
+            for zone in model.zones.values():
+                if zone.valve_device in mapped_devices:
+                    client.watch_shared_attributes(zone.valve_device, SHARED_ATTRIBUTE_WATCHES)
+        else:
+            model.set_cloud_connected(
+                False,
+                now_ms=now_ms - int(model.cloud_loss_timeout_seconds * 1000),
+            )
+    except Exception:
+        adapter.stop()
+        raise
 
     stopped = False
 
@@ -244,6 +462,10 @@ def run(
         while not stopped and (ticks is None or iteration < ticks):
             iteration += 1
             now_ms = utc_ms()
+            if not schedule_loaded and is_clock_ready():
+                scheduler = _load_schedule_runner(config, schedule_path, model, now_ms)
+                schedule_loaded = True
+                LOG.info("Clock synchronized; persisted schedules loaded against valid time")
             for event in adapter.poll():
                 model.ingest_hardware_event(event)
                 peer_id = event.node_id if isinstance(event, SensorSample) else event.peer_id if isinstance(event, PeerStatus) else "central"
@@ -253,6 +475,30 @@ def run(
                         if device not in connected_devices:
                             client.connect_device(device, profile_by_device.get(device))
                             connected_devices.add(device)
+            if not model.startup_safe_confirmed:
+                observed = adapter.query_state()
+                model.startup_safe_confirmed = (
+                    model.controller_state == "ONLINE"
+                    and observed.get("pump") == "OFF"
+                    and set(observed.get("confirmedZones", ())) >= set(hardware_zones)
+                    and all(state == "OFF" for state in observed.get("zones", {}).values())
+                )
+            for zone_id, runtime_state in model.zone_runtime.items():
+                if zone_id not in hardware_zones or not runtime_state.off_reassert_pending:
+                    continue
+                if now_ms - runtime_state.off_reassert_last_ms < 3_000:
+                    continue
+                runtime_state.off_reassert_last_ms = now_ms
+                stopped_ok = model._set_valve(
+                    zone_id,
+                    "OFF",
+                    "OFF_REASSERT",
+                    now_ms,
+                    f"off-reassert-{zone_id}-{now_ms}",
+                    force_hardware=True,
+                )
+                if not stopped_ok:
+                    LOG.error("Central OFF reassert failed zone=%s", zone_id)
             for zone_id, zone in model.zones.items():
                 if zone_id not in hardware_zones or zone.valve_state != "ON":
                     lease_renewed_at.pop(zone_id, None)
@@ -304,10 +550,10 @@ def run(
                 )
                 diagnostic["values"]["clockReady"] = is_clock_ready()
                 client.publish_gateway_telemetry(diagnostic)
-            analytics_result = safe_evaluate(
-                analytics,
-                {"ts": now_ms, "readings": latest_readings, "systemMode": model.site.system_mode},
+            analytics.submit(
+                {"ts": now_ms, "readings": latest_readings, "systemMode": model.site.system_mode}
             )
+            analytics_result = analytics.status()
             LOG.info(
                 "tick=%s profile=%s mappedOnline=%s controller=%s mode=%s analytics=%s",
                 iteration,
@@ -320,10 +566,8 @@ def run(
             if ticks is None or iteration < ticks:
                 time.sleep(model.interval_seconds)
     finally:
-        try:
-            adapter.all_off("gateway-shutdown-all-off")
-        finally:
-            adapter.stop()
+        analytics.close()
+        adapter.stop()
         if client is not None:
             client.disconnect_devices(tuple(connected_devices))
             client.stop()

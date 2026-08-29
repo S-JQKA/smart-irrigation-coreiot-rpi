@@ -15,8 +15,11 @@
 #ifndef SMARTFARM_ROLE_CENTRAL
 #define SMARTFARM_ROLE_CENTRAL 0
 #endif
-#ifndef SMARTFARM_VALVE_PIN
-#define SMARTFARM_VALVE_PIN LED_BUILTIN
+#ifndef SMARTFARM_VALVE1_PIN
+#define SMARTFARM_VALVE1_PIN LED_BUILTIN
+#endif
+#ifndef SMARTFARM_VALVE2_PIN
+#define SMARTFARM_VALVE2_PIN -1
 #endif
 #ifndef SMARTFARM_PUMP_PIN
 #define SMARTFARM_PUMP_PIN 47
@@ -27,6 +30,18 @@
 #ifndef SMARTFARM_TANK_LOW_PIN
 #define SMARTFARM_TANK_LOW_PIN -1
 #endif
+#ifndef SMARTFARM_SENSOR_FIELD
+#define SMARTFARM_SENSOR_FIELD 1
+#endif
+#ifndef SMARTFARM_MAX_CONCURRENT_ZONES
+#define SMARTFARM_MAX_CONCURRENT_ZONES 1
+#endif
+
+static_assert(SMARTFARM_SENSOR_FIELD == 1 || SMARTFARM_SENSOR_FIELD == 2,
+              "SMARTFARM_SENSOR_FIELD must be 1 or 2");
+static_assert(SMARTFARM_MAX_CONCURRENT_ZONES >= 1 &&
+                  SMARTFARM_MAX_CONCURRENT_ZONES <= 2,
+              "SMARTFARM_MAX_CONCURRENT_ZONES must be 1 or 2");
 
 namespace {
 
@@ -128,12 +143,31 @@ String canonicalPayload(JsonDocument &source) {
     canonical["version"] = source["version"];
     canonical["zoneId"] = source["zoneId"];
   } else if (type == "SENSOR") {
-    canonical["airHumidity"] = source["airHumidity"];
-    canonical["airTemp"] = source["airTemp"];
+    if (!source["airHumidity"].isNull()) {
+      canonical["airHumidity"] = source["airHumidity"];
+    } else {
+      canonical["airHumidityCentiPct"] = source["airHumidityCentiPct"];
+    }
+    if (!source["airTemp"].isNull()) {
+      canonical["airTemp"] = source["airTemp"];
+    } else {
+      canonical["airTempCentiC"] = source["airTempCentiC"];
+    }
+    if (!source["flowRateLpm"].isNull()) {
+      canonical["flowRateLpm"] = source["flowRateLpm"];
+    } else {
+      canonical["flowMilliLpm"] = source["flowMilliLpm"];
+    }
     canonical["lightLux"] = source["lightLux"];
     canonical["nodeId"] = source["nodeId"];
+    canonical["pulseCounter"] = source["pulseCounter"];
     canonical["sequence"] = source["sequence"];
-    canonical["soilMoisture"] = source["soilMoisture"];
+    if (!source["soilMoisture"].isNull()) {
+      canonical["soilMoisture"] = source["soilMoisture"];
+    } else {
+      canonical["soilCentiPct"] = source["soilCentiPct"];
+    }
+    if (!source["tankLow"].isNull()) canonical["tankLow"] = source["tankLow"];
     canonical["type"] = source["type"];
     canonical["version"] = source["version"];
     canonical["zoneId"] = source["zoneId"];
@@ -141,6 +175,7 @@ String canonicalPayload(JsonDocument &source) {
     canonical["online"] = source["online"];
     canonical["peerId"] = source["peerId"];
     canonical["role"] = source["role"];
+    canonical["tankLow"] = source["tankLow"];
     canonical["type"] = source["type"];
     canonical["version"] = source["version"];
   } else {
@@ -164,9 +199,11 @@ bool sendDocument(const uint8_t *peer, JsonDocument &document) {
   if (canonical.isEmpty() || !ensurePeer(peer)) return false;
   document["crc16"] = crc16Ccitt(
       reinterpret_cast<const uint8_t *>(canonical.c_str()), canonical.length());
+  const size_t requiredLength = measureJson(document);
+  if (requiredLength == 0 || requiredLength > ESP_NOW_MAX_DATA_LEN) return false;
   uint8_t buffer[ESP_NOW_MAX_DATA_LEN]{};
   const size_t length = serializeJson(document, buffer, sizeof(buffer));
-  if (length == 0 || length > ESP_NOW_MAX_DATA_LEN) return false;
+  if (length != requiredLength) return false;
   return esp_now_send(peer, buffer, length) == ESP_OK;
 }
 
@@ -185,19 +222,28 @@ void runSensor() {
   if (millis() - lastSent < kSensorPeriodMs) return;
   lastSent = millis();
   JsonDocument sample;
-  sample["airHumidity"] = 60.0;
-  sample["airTemp"] = 29.0;
-  sample["lightLux"] = 18000.0;
-  sample["nodeId"] = "sensor-field-1";
+  sample["airHumidity"] = 60;
+  sample["airTemp"] = 29;
+  sample["flowRateLpm"] = 1;
+  sample["lightLux"] = 18000;
+  const String zoneId = String("field-") + SMARTFARM_SENSOR_FIELD;
+  const String nodeId = String("sensor-") + zoneId;
+  sample["nodeId"] = nodeId;
   sample["sequence"] = ++sequence;
+  sample["pulseCounter"] = sequence * 5;
   JsonArray soil = sample["soilMoisture"].to<JsonArray>();
-  soil.add(25.0F + static_cast<float>(sequence % 10) / 10.0F);
+  const int soilBase = SMARTFARM_SENSOR_FIELD == 1 ? 2500 : 2200;
+  for (int sensorIndex = 0; sensorIndex < 4; ++sensorIndex) {
+    soil.add((soilBase + sensorIndex * 20 + static_cast<int>(sequence % 10) * 10) /
+             100.0);
+  }
   sample["type"] = "SENSOR";
   sample["version"] = kVersion;
-  sample["zoneId"] = "field-1";
+  sample["zoneId"] = zoneId;
   const bool queued = sendDocument(kBridgeMac, sample);
-  Serial.printf("SENSOR seq=%lu synthetic=true queued=%s\n",
-                static_cast<unsigned long>(sequence), queued ? "yes" : "no");
+  Serial.printf("SENSOR node=%s zone=%s seq=%lu synthetic=true queued=%s\n",
+                nodeId.c_str(), zoneId.c_str(), static_cast<unsigned long>(sequence),
+                queued ? "yes" : "no");
 }
 
 #elif SMARTFARM_ROLE_BRIDGE
@@ -232,30 +278,118 @@ void forwardRadioFrame() {
 
 #elif SMARTFARM_ROLE_CENTRAL
 
-bool gValveOn = false;
-bool gPumpOn = false;
-uint32_t gLeaseUntil = 0;
-String gLastCommandId;
-JsonDocument gLastAck;
+struct ZoneOutput {
+  const char *zoneId;
+  int pin;
+  bool on;
+  uint32_t leaseUntil;
+  String activeCommandId;
+};
 
-void writeOutput(uint8_t pin, bool on) {
+ZoneOutput gZones[] = {
+    {"field-1", SMARTFARM_VALVE1_PIN, false, 0, ""},
+    {"field-2", SMARTFARM_VALVE2_PIN, false, 0, ""},
+};
+bool gPumpOn = false;
+constexpr size_t kDedupCapacity = 8;
+String gSeenCommandIds[kDedupCapacity];
+size_t gDedupCursor = 0;
+
+void writeOutput(int pin, bool on) {
+  if (pin < 0) return;
   digitalWrite(pin, on ? SMARTFARM_ACTIVE_LEVEL : !SMARTFARM_ACTIVE_LEVEL);
 }
 
-void forceOff() {
+bool outputMatches(int pin, bool on) {
+  if (pin < 0) return false;
+  return digitalRead(pin) == (on ? SMARTFARM_ACTIVE_LEVEL : !SMARTFARM_ACTIVE_LEVEL);
+}
+
+ZoneOutput *findZone(const String &zoneId) {
+  for (auto &zone : gZones) {
+    if (zoneId == zone.zoneId) return &zone;
+  }
+  return nullptr;
+}
+
+bool anyValveOn() {
+  for (const auto &zone : gZones) {
+    if (zone.on) return true;
+  }
+  return false;
+}
+
+size_t activeValveCount() {
+  size_t active = 0;
+  for (const auto &zone : gZones) {
+    if (zone.on) ++active;
+  }
+  return active;
+}
+
+void clearZoneLease(ZoneOutput &zone) {
+  zone.leaseUntil = 0;
+  zone.activeCommandId = "";
+}
+
+bool seenCommand(const String &commandId) {
+  for (const auto &seen : gSeenCommandIds) {
+    if (seen == commandId) return true;
+  }
+  return false;
+}
+
+void rememberCommand(const String &commandId) {
+  gSeenCommandIds[gDedupCursor] = commandId;
+  gDedupCursor = (gDedupCursor + 1) % kDedupCapacity;
+}
+
+void forceAllOff() {
   writeOutput(SMARTFARM_PUMP_PIN, false);
-  gPumpOn = false;
   delay(50);
-  writeOutput(SMARTFARM_VALVE_PIN, false);
-  gValveOn = false;
-  gLeaseUntil = 0;
+  gPumpOn = !outputMatches(SMARTFARM_PUMP_PIN, false);
+  for (auto &zone : gZones) {
+    writeOutput(zone.pin, false);
+    if (zone.pin >= 0) {
+      delay(20);
+      zone.on = !outputMatches(zone.pin, false);
+    } else {
+      zone.on = false;
+    }
+    clearZoneLease(zone);
+  }
+}
+
+bool stopZone(ZoneOutput &zone) {
+  if (!zone.on) {
+    clearZoneLease(zone);
+    return true;
+  }
+  const bool lastActiveZone = activeValveCount() == 1;
+  if (lastActiveZone) {
+    writeOutput(SMARTFARM_PUMP_PIN, false);
+    delay(50);
+    gPumpOn = !outputMatches(SMARTFARM_PUMP_PIN, false);
+    if (gPumpOn) return false;
+  }
+  writeOutput(zone.pin, false);
+  delay(50);
+  zone.on = !outputMatches(zone.pin, false);
+  clearZoneLease(zone);
+  if (zone.on) return false;
+  if (!lastActiveZone) {
+    gPumpOn = outputMatches(SMARTFARM_PUMP_PIN, true);
+    return gPumpOn;
+  }
+  return !gPumpOn;
 }
 
 bool tankLow() {
   return SMARTFARM_TANK_LOW_PIN >= 0 && digitalRead(SMARTFARM_TANK_LOW_PIN) == LOW;
 }
 
-void fillAck(JsonDocument &ack, JsonDocument &command, bool accepted, const char *reason) {
+void fillAck(JsonDocument &ack, JsonDocument &command, ZoneOutput *zone, bool accepted,
+             const char *reason) {
   ack.clear();
   ack["accepted"] = accepted;
   ack["commandId"] = command["commandId"];
@@ -263,7 +397,7 @@ void fillAck(JsonDocument &ack, JsonDocument &command, bool accepted, const char
   ack["reason"] = reason;
   ack["sequence"] = command["sequence"];
   ack["type"] = "ACK";
-  ack["valveOutput"] = gValveOn ? "ON" : "OFF";
+  ack["valveOutput"] = zone != nullptr && zone->on ? "ON" : "OFF";
   ack["version"] = kVersion;
   ack["zoneId"] = command["zoneId"];
 }
@@ -278,52 +412,78 @@ void handleCommand() {
       command["type"] != "SET_ZONE") return;
   ensurePeer(source);
   const String commandId = command["commandId"] | "";
-  if (commandId.isEmpty() || command["zoneId"] != "field-1") {
-    fillAck(gLastAck, command, false, "INVALID_COMMAND");
-    sendDocument(source, gLastAck);
+  const String zoneId = command["zoneId"] | "";
+  ZoneOutput *zone = findZone(zoneId);
+  JsonDocument ack;
+  if (commandId.isEmpty() || zone == nullptr || zone->pin < 0) {
+    fillAck(ack, command, zone, false, "INVALID_COMMAND");
+    sendDocument(source, ack);
     return;
   }
-  if (commandId == gLastCommandId) {
-    const String duplicateState = command["state"] | "";
-    if (duplicateState == "ON") {
-      if (tankLow()) {
-        forceOff();
-        fillAck(gLastAck, command, false, "TANK_LOW");
-      } else if (gPumpOn && gValveOn) {
-        const uint32_t requestedLease = command["leaseMs"] | kLeaseMaxMs;
-        gLeaseUntil = millis() + min(requestedLease, kLeaseMaxMs);
-        fillAck(gLastAck, command, true, "EXECUTED");
-      } else {
-        fillAck(gLastAck, command, false, "LEASE_EXPIRED");
-      }
-    }
-    sendDocument(source, gLastAck);
-    return;
-  }
-  gLastCommandId = commandId;
   const String desired = command["state"] | "";
+  if (seenCommand(commandId)) {
+    const String duplicateState = command["state"] | "";
+    if (duplicateState == "ON" && commandId == zone->activeCommandId) {
+      if (tankLow()) {
+        forceAllOff();
+        fillAck(ack, command, zone, false, "TANK_LOW");
+      } else if (gPumpOn && zone->on) {
+        const uint32_t requestedLease = command["leaseMs"] | kLeaseMaxMs;
+        zone->leaseUntil = millis() + min(requestedLease, kLeaseMaxMs);
+        fillAck(ack, command, zone, true, "EXECUTED");
+      } else {
+        fillAck(ack, command, zone, false, "LEASE_EXPIRED");
+      }
+    } else if (duplicateState == "OFF" && !zone->on) {
+      fillAck(ack, command, zone, true, "EXECUTED");
+    } else {
+      fillAck(ack, command, zone, false, "DUPLICATE");
+    }
+    sendDocument(source, ack);
+    return;
+  }
+  rememberCommand(commandId);
   if (desired == "ON") {
     if (tankLow()) {
-      forceOff();
-      fillAck(gLastAck, command, false, "TANK_LOW");
+      forceAllOff();
+      fillAck(ack, command, zone, false, "TANK_LOW");
+    } else if (zone->on) {
+      fillAck(ack, command, zone, false, "ALREADY_ACTIVE");
+    } else if (activeValveCount() >= SMARTFARM_MAX_CONCURRENT_ZONES) {
+      fillAck(ack, command, zone, false, "MAX_CONCURRENT_ZONES");
     } else {
-      writeOutput(SMARTFARM_VALVE_PIN, true);
-      gValveOn = true;
+      writeOutput(zone->pin, true);
       delay(100);
-      writeOutput(SMARTFARM_PUMP_PIN, true);
-      gPumpOn = true;
-      const uint32_t requestedLease = command["leaseMs"] | kLeaseMaxMs;
-      gLeaseUntil = millis() + min(requestedLease, kLeaseMaxMs);
-      fillAck(gLastAck, command, true, "EXECUTED");
+      zone->on = outputMatches(zone->pin, true);
+      if (!zone->on) {
+        forceAllOff();
+        fillAck(ack, command, zone, false, "OUTPUT_CONFIRM_FAILED");
+      } else {
+        if (!gPumpOn) {
+          writeOutput(SMARTFARM_PUMP_PIN, true);
+          delay(50);
+          gPumpOn = outputMatches(SMARTFARM_PUMP_PIN, true);
+        }
+        if (!gPumpOn) {
+          forceAllOff();
+          fillAck(ack, command, zone, false, "OUTPUT_CONFIRM_FAILED");
+        } else {
+          const uint32_t requestedLease = command["leaseMs"] | kLeaseMaxMs;
+          zone->leaseUntil = millis() + min(requestedLease, kLeaseMaxMs);
+          zone->activeCommandId = commandId;
+          fillAck(ack, command, zone, true, "EXECUTED");
+        }
+      }
     }
   } else if (desired == "OFF") {
-    forceOff();
-    fillAck(gLastAck, command, true, "EXECUTED");
+    const bool confirmed = stopZone(*zone);
+    if (!confirmed) forceAllOff();
+    fillAck(ack, command, zone, confirmed, confirmed ? "EXECUTED" : "OUTPUT_CONFIRM_FAILED");
   } else {
-    forceOff();
-    fillAck(gLastAck, command, false, "INVALID_COMMAND");
+    forceAllOff();
+    fillAck(ack, command, zone, false, "INVALID_COMMAND");
   }
-  sendDocument(source, gLastAck);
+  sendDocument(source, ack);
 }
 
 void sendHeartbeat() {
@@ -334,6 +494,7 @@ void sendHeartbeat() {
   heartbeat["online"] = true;
   heartbeat["peerId"] = "central";
   heartbeat["role"] = "CENTRAL";
+  heartbeat["tankLow"] = tankLow();
   heartbeat["type"] = "PEER";
   heartbeat["version"] = kVersion;
   sendDocument(kBridgeMac, heartbeat);
@@ -347,10 +508,11 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 #if SMARTFARM_ROLE_CENTRAL
-  pinMode(SMARTFARM_VALVE_PIN, OUTPUT);
+  if (SMARTFARM_VALVE1_PIN >= 0) pinMode(SMARTFARM_VALVE1_PIN, OUTPUT);
+  if (SMARTFARM_VALVE2_PIN >= 0) pinMode(SMARTFARM_VALVE2_PIN, OUTPUT);
   pinMode(SMARTFARM_PUMP_PIN, OUTPUT);
   if (SMARTFARM_TANK_LOW_PIN >= 0) pinMode(SMARTFARM_TANK_LOW_PIN, INPUT_PULLUP);
-  forceOff();
+  forceAllOff();
 #endif
   if (!initializeEspNow()) {
     Serial.println("BOOT_FAIL reason=ESPNOW_INIT");
@@ -369,12 +531,26 @@ void loop() {
 #elif SMARTFARM_ROLE_CENTRAL
   handleCommand();
   sendHeartbeat();
-  if (gPumpOn && tankLow()) {
-    forceOff();
+  if (gPumpOn && !anyValveOn()) {
+    forceAllOff();
+    Serial.println("INTERLOCK outputs=OFF reason=PUMP_WITHOUT_VALVE");
+  } else if (!gPumpOn && anyValveOn()) {
+    forceAllOff();
+    Serial.println("INTERLOCK outputs=OFF reason=VALVE_WITHOUT_PUMP");
+  } else if (gPumpOn && tankLow()) {
+    forceAllOff();
     Serial.println("TANK_LOW outputs=OFF");
-  } else if (gPumpOn && static_cast<int32_t>(millis() - gLeaseUntil) >= 0) {
-    forceOff();
-    Serial.println("LEASE_EXPIRED outputs=OFF");
+  } else {
+    for (auto &zone : gZones) {
+      if (!zone.on || zone.leaseUntil == 0 ||
+          static_cast<int32_t>(millis() - zone.leaseUntil) < 0) {
+        continue;
+      }
+      const bool stopped = stopZone(zone);
+      if (!stopped) forceAllOff();
+      Serial.printf("LEASE_EXPIRED zone=%s pump=%s result=%s\n", zone.zoneId,
+                    gPumpOn ? "ON" : "OFF", stopped ? "EXECUTED" : "ALL_OFF");
+    }
   }
 #endif
   delay(2);

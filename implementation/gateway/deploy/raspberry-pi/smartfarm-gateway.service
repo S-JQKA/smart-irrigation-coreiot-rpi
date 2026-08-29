@@ -1,7 +1,7 @@
 [Unit]
 Description=SmartFarm ACK-driven Raspberry Pi Gateway
-Wants=network-online.target time-sync.target
-After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target systemd-time-wait-sync.service
+After=network-online.target time-sync.target systemd-time-wait-sync.service
 
 [Service]
 Type=simple
@@ -23,4 +23,3 @@ ReadWritePaths=/var/lib/smartfarm-gateway
 
 [Install]
 WantedBy=multi-user.target
-

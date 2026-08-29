@@ -11,7 +11,8 @@ from typing import Any
 RUNTIME_PROFILES = {
     "SIM_TWO_FIELD": ("SYNTHETIC", "SIM", "SIM+PLATFORM"),
     "HIL_FIELD1_3BOARD": ("SYNTHETIC", "LED", "HIL"),
-    "HARDWARE_TWO_FIELD": ("PHYSICAL", "RELAY", "FINAL-HARDWARE"),
+    "HIL_TWO_FIELD_4BOARD": ("SYNTHETIC", "LED", "HIL"),
+    "HARDWARE_TWO_FIELD": ("PHYSICAL", "RELAY", "HARDWARE-UNVERIFIED"),
 }
 
 
@@ -36,6 +37,7 @@ class PeerStatus:
     role: str
     online: bool
     received_at_ms: int
+    tank_low: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -151,7 +153,11 @@ class FakeAdapter(HardwareAdapter):
         return acknowledgements
 
     def query_state(self) -> dict[str, Any]:
-        return {"zones": dict(self.zone_states), "pump": self.pump_state}
+        return {
+            "zones": dict(self.zone_states),
+            "pump": self.pump_state,
+            "confirmedZones": tuple(self.zone_states),
+        }
 
     def _ack(self, command_id: str, zone_id: str, accepted: bool, reason: str) -> ActuatorAck:
         self.sequence += 1

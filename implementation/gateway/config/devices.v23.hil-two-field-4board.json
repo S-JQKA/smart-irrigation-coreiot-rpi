@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2.3-hardware-two-field-template",
-  "runtimeProfile": "HARDWARE_TWO_FIELD",
+  "schemaVersion": "2.3-hil-two-field-4board",
+  "runtimeProfile": "HIL_TWO_FIELD_4BOARD",
   "transportMode": "GATEWAY",
   "controlAuthority": "LOCAL",
   "gateway": {
@@ -31,9 +31,9 @@
   ],
   "runtime": {
     "serialPortEnv": "SMARTFARM_SERIAL_PORT",
-    "serialPort": "/dev/serial/by-id/REPLACE_WITH_ESP32_BRIDGE",
+    "serialPort": "COM5",
     "baudrate": 115200,
-    "requireNtpSync": true,
+    "requireNtpSync": false,
     "finalHardwareVerified": false,
     "hardwareZones": ["field-1", "field-2"],
     "sensorNodeZones": {
@@ -57,7 +57,8 @@
   },
   "simulation": {
     "intervalSeconds": 1,
-    "maxConcurrentZones": 1,
+    "seed": 20260825,
+    "maxConcurrentZones": 2,
     "pulsesPerLiter": 450,
     "manualOffLatchSeconds": 300,
     "manualOnMaxSeconds": 300,

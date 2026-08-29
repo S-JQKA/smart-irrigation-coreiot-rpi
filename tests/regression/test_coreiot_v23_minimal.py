@@ -36,6 +36,36 @@ def reachable_node_indexes(chain: dict) -> set[int]:
 
 
 class CoreIoTV23MinimalStaticChecks(unittest.TestCase):
+    def test_gateway_contract_labels_runtime_profiles_and_manual_duration(self) -> None:
+        contract = load(TARGET / "manifests" / "data_contract_v2.3.json")
+        self.assertEqual(
+            {
+                "SIM_TWO_FIELD",
+                "HIL_FIELD1_3BOARD",
+                "HIL_TWO_FIELD_4BOARD",
+                "HARDWARE_TWO_FIELD",
+            },
+            set(contract["runtimeProfiles"]),
+        )
+        self.assertIn("integer:1..2", contract["gatewayConfiguration"]["maxConcurrentZones"])
+        self.assertIn("runDurationSeconds", contract["manualRpc"]["turnOnRequired"])
+        self.assertEqual("forbidden", contract["manualRpc"]["directPumpOn"])
+        self.assertIn("runtimeMode", contract["gatewayTelemetry"])
+
+    def test_four_board_hil_firmware_declares_two_sensors_and_safe_shared_pump(self) -> None:
+        firmware = ROOT / "implementation" / "firmware" / "smartfarm_hil_v1"
+        source = (firmware / "src" / "main.cpp").read_text(encoding="utf-8")
+        platformio = (firmware / "platformio.ini").read_text(encoding="utf-8")
+        self.assertIn("SMARTFARM_SENSOR_FIELD", source)
+        self.assertIn("activeValveCount()", source)
+        self.assertIn("clearZoneLease", source)
+        self.assertIn("stopZone", source)
+        self.assertIn("SMARTFARM_MAX_CONCURRENT_ZONES", source)
+        self.assertIn("sensor_field1_n16r8", platformio)
+        self.assertIn("sensor_field2_n16r8", platformio)
+        self.assertIn("-DSMARTFARM_VALVE2_PIN=4", platformio)
+        self.assertIn("-DSMARTFARM_MAX_CONCURRENT_ZONES=2", platformio)
+
     def test_has_seven_small_active_chains(self) -> None:
         paths = list(RULES.glob("*.json"))
         self.assertEqual(7, len(paths))

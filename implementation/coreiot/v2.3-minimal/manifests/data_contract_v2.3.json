@@ -79,10 +79,10 @@
     "bufferDepth": "integer>=0",
     "expiredBufferCount": "integer>=0",
     "gatewayDegraded": "boolean",
-    "runtimeMode": "enum:SIM_TWO_FIELD|HIL_FIELD1_3BOARD|HARDWARE_TWO_FIELD",
+    "runtimeMode": "enum:SIM_TWO_FIELD|HIL_FIELD1_3BOARD|HIL_TWO_FIELD_4BOARD|HARDWARE_TWO_FIELD",
     "sensorDataOrigin": "enum:SYNTHETIC|PHYSICAL",
     "actuatorBackend": "enum:SIM|LED|RELAY",
-    "evidenceClass": "enum:SIM+PLATFORM|HIL|FINAL-HARDWARE",
+    "evidenceClass": "enum:SIM+PLATFORM|HIL|HARDWARE-UNVERIFIED|FINAL-HARDWARE",
     "clockReady": "boolean"
   },
   "fieldAttributes": {
@@ -97,7 +97,7 @@
     "maxWaterPerCycle": 1000,
     "maxWaterPerDay": 5000,
     "maxDurationSec": 600,
-    "maxConcurrentZones": 1,
+    "maxConcurrentZones": "integer:1..2; default=1; HIL_TWO_FIELD_4BOARD may use 2",
     "pulsesPerLiter": 450,
     "startDebounceSamples": 2,
     "floodDebounceSamples": 3,
@@ -147,7 +147,8 @@
   "runtimeProfiles": {
     "SIM_TWO_FIELD": "synthetic sensors and FakeAdapter; SIM+PLATFORM only",
     "HIL_FIELD1_3BOARD": "one synthetic ESP32 Sensor Node, Bridge and LED Central; HIL only",
-    "HARDWARE_TWO_FIELD": "physical sensors, tank, flow and relay outputs; final only after calibration and safety evidence"
+    "HIL_TWO_FIELD_4BOARD": "two synthetic ESP32 Sensor Nodes, one Bridge and one shared two-valve LED/GPIO Central; HIL only",
+    "HARDWARE_TWO_FIELD": "starts as HARDWARE-UNVERIFIED; FINAL-HARDWARE requires explicit finalHardwareVerified after calibration and safety evidence"
   },
   "invariants": [
     "CoreIoT never creates actualValveState or pumpState from an RPC result",
@@ -160,6 +161,7 @@
     "Cloud loss does not enter DEGRADED until the configured timeout expires",
     "Hardware actual state changes only after a CRC-valid Central execution ACK",
     "Manual ON requires runDurationSeconds and never uses ttlSeconds as irrigation duration",
-    "SIM, HIL and final hardware evidence are labeled and never mixed in one runtime"
+    "SIM, HIL, unverified hardware and final hardware evidence are labeled and never mixed in one runtime",
+    "finalHardwareVerified remains false until the complete physical acceptance suite passes"
   ]
 }
