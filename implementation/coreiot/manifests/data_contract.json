@@ -1,0 +1,188 @@
+{
+  "schemaVersion": "2.3-two-field-runtime",
+  "ownership": {
+    "CoreIoT": [
+      "configuration",
+      "telemetry_history",
+      "dashboard",
+      "alarms",
+      "manual_rpc_request",
+      "gateway_schedule_status_display",
+      "irrigation_recommendation"
+    ],
+    "Gateway": [
+      "actualValveState",
+      "pumpState",
+      "commandStatus",
+      "command_acknowledgement",
+      "scheduled_task_execution",
+      "local_schedule_configuration",
+      "multizone_scheduler",
+      "local_safety",
+      "operation_mode"
+    ]
+  },
+  "deviceActivity": {
+    "source": "CoreIoT Gateway API connect/disconnect",
+    "attribute": "server:active:boolean",
+    "alarm": "NodeOffline",
+    "createAfterSeconds": 300,
+    "severity": "MAJOR",
+    "clearWhen": "active=true"
+  },
+  "soilSensorAnalyticsTelemetry": {
+    "anomalyActive": "boolean",
+    "anomalyType": "enum:NONE|SPIKE|STUCK|CROSS_SENSOR_OUTLIER|DRIFT",
+    "anomalyScore": "number>=0",
+    "anomalySensor": "string:deviceName",
+    "anomalyZoneId": "enum:field-1|field-2",
+    "anomalyReason": "string",
+    "anomalyMethod": "enum:EWMA_ZSCORE",
+    "anomalyQuality": "enum:WARMING_UP|GOOD|SUSPECT",
+    "statePublication": "anomalyActive/type/score omitted during WARMING_UP or untrusted input"
+  },
+  "fieldTelemetry": {
+    "avgMoisture": "number:0..100",
+    "airTemp": "number:celsius:-10..60",
+    "airHumidity": "number:0..100",
+    "vpd": "number:kPa>=0",
+    "lightLux": "number:lux>=0",
+    "waterConsumptionLiters": "number:liters>=0",
+    "irrigationRecommendation": "enum:TURN_ON_REQUEST|TURN_OFF_REQUEST|NONE",
+    "recommendationReason": "string",
+    "irrigationPriority": "integer:0..100",
+    "actualValveState": "enum:ON|OFF",
+    "commandStatus": "enum:NONE|PENDING|EXECUTED|REJECTED|EXPIRED|DUPLICATE",
+    "controlMode": "enum:AUTO|MANUAL|DISABLED",
+    "systemMode": "enum:NORMAL|DEGRADED|SAFE-IDLE",
+    "irrigationRuntimeSec": "number:seconds>=0",
+    "safetyBlockReason": "string",
+    "irrigationTask": "object:startTs,durationThreshold,consumption,duration,status,resultReason,commandId,scheduleId,source",
+    "gatewayScheduleId": "string",
+    "gatewayScheduleSource": "enum:GATEWAY_LOCAL",
+    "gatewayScheduleEnabled": "boolean",
+    "gatewayScheduleStatus": "enum:SCHEDULED|RUNNING|COMPLETED|REJECTED|CANCELLED|SAFETY_STOPPED",
+    "gatewayScheduleNextRunTs": "integer:epochMs|0",
+    "gatewayScheduleDurationSec": "integer:seconds>=1",
+    "gatewayScheduleRepeatEverySec": "integer:seconds>=0",
+    "gatewayScheduleLastRunTs": "integer:epochMs|0",
+    "gatewayScheduleLastResultReason": "string",
+    "gatewayScheduleConfigCommandId": "string",
+    "gatewayScheduleConfigAck": "enum:NONE|ACCEPTED|REJECTED",
+    "gatewayScheduleConfigReason": "string",
+    "cycleWaterLiters": "number:liters>=0",
+    "dailyWaterLiters": "number:liters>=0"
+  },
+  "waterMeterTelemetry": {
+    "pulseCounter": "integer:cumulative>=0",
+    "flowRate": "number:litersPerMinute>=0",
+    "waterConsumptionLiters": "number:cumulativeLiters>=0",
+    "cycleWaterLiters": "number:liters>=0",
+    "dailyWaterLiters": "number:liters>=0",
+    "zeroFlowSeconds": "number:seconds>=0",
+    "zoneFlowLow": "boolean",
+    "hydraulicAnalyticsTrusted": "boolean",
+    "valveLeakActive": "boolean",
+    "valveLeakScore": "number>=0",
+    "valveLeakPulseDelta": "number>=0",
+    "valveLeakReason": "string",
+    "valveLeakZoneId": "enum:field-1|field-2",
+    "valveLeakMethod": "enum:VALVE_FLOW_CROSS_SIGNAL",
+    "valveLeakQuality": "enum:WARMING_UP|GOOD",
+    "statePublication": "valveLeakActive/score/pulseDelta omitted during WARMING_UP or untrusted input"
+  },
+  "gatewayTelemetry": {
+    "cloudConnected": "boolean",
+    "operationMode": "enum:NORMAL|DEGRADED|SAFE-IDLE",
+    "cloudDisconnectedSince": "integer:epochMs",
+    "cloudReconnectCount": "integer>=0",
+    "bufferDepth": "integer>=0",
+    "expiredBufferCount": "integer>=0",
+    "gatewayDegraded": "boolean",
+    "runtimeMode": "enum:SIM_TWO_FIELD|HIL_FIELD1_3BOARD|HIL_TWO_FIELD_4BOARD|HARDWARE_TWO_FIELD",
+    "sensorDataOrigin": "enum:SYNTHETIC|PHYSICAL",
+    "actuatorBackend": "enum:SIM|LED|RELAY",
+    "evidenceClass": "enum:SIM+PLATFORM|HIL|HARDWARE-UNVERIFIED|FINAL-HARDWARE",
+    "clockReady": "boolean"
+  },
+  "fieldAttributes": {
+    "criticalMoisture": 15,
+    "minMoistureThreshold": 30,
+    "targetMoisture": 55,
+    "maxMoistureThreshold": 70,
+    "floodMoistureThreshold": 85,
+    "controlMode": "DISABLED"
+  },
+  "gatewayConfiguration": {
+    "maxWaterPerCycle": 1000,
+    "maxWaterPerDay": 5000,
+    "maxDurationSec": 600,
+    "maxConcurrentZones": "integer:1..2; default=1; HIL_TWO_FIELD_4BOARD may use 2",
+    "pulsesPerLiter": 450,
+    "startDebounceSamples": 2,
+    "floodDebounceSamples": 3,
+    "flowGraceSeconds": 15,
+    "minimumFlowRate": 0.1,
+    "sensorStaleSeconds": 30,
+    "cloudLossTimeoutSeconds": 60,
+    "telemetryReplayTtlSeconds": 900
+  },
+  "localScheduleConfiguration": {
+    "channel": "downstream shared attribute",
+    "attributeKey": "localScheduleConfig",
+    "target": "related Smart Valve device",
+    "requiredFields": [
+      "schemaVersion=1",
+      "configId",
+      "scheduleId",
+      "enabled"
+    ],
+    "enabledScheduleParams": [
+      "startAtMs or startAfterSeconds",
+      "durationSeconds",
+      "repeatEverySeconds"
+    ],
+    "constraints": {
+      "futureWindowDays": 7,
+      "durationSeconds": "1..min(manualOnMaxSeconds,maxDurationSeconds)",
+      "repeatEverySeconds": "0 or >=durationSeconds"
+    },
+    "delivery": "v1/gateway/attributes live update plus startup/reconnect request",
+    "persistence": "/var/lib/smartfarm-gateway/schedules.json (SIM uses workspace-local .runtime)"
+  },
+  "manualRpc": {
+    "method": "TURN_ON|TURN_OFF",
+    "turnOnRequired": [
+      "commandId",
+      "source=MANUAL",
+      "requestedAt",
+      "ttlSeconds",
+      "runDurationSeconds"
+    ],
+    "ttlSecondsMeaning": "request delivery freshness",
+    "runDurationSeconds": "integer:1..min(300,maxDurationSec)",
+    "deprecatedAlias": "manualTtlSeconds",
+    "directPumpOn": "forbidden"
+  },
+  "runtimeProfiles": {
+    "SIM_TWO_FIELD": "synthetic sensors and FakeAdapter; SIM+PLATFORM only",
+    "HIL_FIELD1_3BOARD": "one synthetic ESP32 Sensor Node, Bridge and LED Central; HIL only",
+    "HIL_TWO_FIELD_4BOARD": "two synthetic ESP32 Sensor Nodes, one Bridge and one shared two-valve LED/GPIO Central; HIL only",
+    "HARDWARE_TWO_FIELD": "starts as HARDWARE-UNVERIFIED; FINAL-HARDWARE requires explicit finalHardwareVerified after calibration and safety evidence"
+  },
+  "invariants": [
+    "CoreIoT never creates actualValveState or pumpState from an RPC result",
+    "Only one current-snapshot soil aggregation triggers a recommendation",
+    "Environment and water-meter updates store context but do not trigger control",
+    "Gateway validates all requests and remains authoritative for safety and execution",
+    "Gateway-local schedules use the same bounded SCHEDULER admission path and never bypass safety",
+    "Field 1 and Field 2 keep independent pulse, cycle-water and daily-water counters",
+    "Main pump is ON only while at least one zone valve is ON and all hard interlocks pass",
+    "Cloud loss does not enter DEGRADED until the configured timeout expires",
+    "Hardware actual state changes only after a CRC-valid Central execution ACK",
+    "Manual ON requires runDurationSeconds and never uses ttlSeconds as irrigation duration",
+    "SIM, HIL, unverified hardware and final hardware evidence are labeled and never mixed in one runtime",
+    "finalHardwareVerified remains false until the complete physical acceptance suite passes",
+    "Analytics output is advisory telemetry only and is never read by the actuator control or safety loop"
+  ]
+}

@@ -1,89 +1,75 @@
-# Smart Irrigation on CoreIoT with Raspberry Pi
+# SmartFarm — Smart Irrigation with CoreIoT and Raspberry Pi
 
-Đồ án xây dựng hệ thống Smart Farm đa vùng, lấy **Smart Irrigation Template** làm
-hợp đồng dữ liệu lõi, sử dụng **Raspberry Pi** làm gateway điều khiển biên,
-**ESP32/ESP-NOW** cho mạng cảm biến và **CoreIoT** cho telemetry, cấu hình, lịch
-sử, dashboard và cảnh báo.
+SmartFarm là hệ thống tưới hai vùng dùng Raspberry Pi Gateway để điều phối,
+ESP32-S3/ESP-NOW để thu thập dữ liệu và thực thi đầu ra, CoreIoT để quản lý
+cấu hình, telemetry, lịch sử, dashboard và cảnh báo.
 
-![Kiến trúc hệ thống](evidence/curated/slides/midterm_2026/illustrations/smartfarm_system_design_simple.png)
-
-## Mục tiêu chính
-
-- Thu thập dữ liệu độ ẩm đất và môi trường theo từng vùng tưới.
-- Điều khiển van và bơm với cơ chế phân quyền, xác nhận lệnh và giới hạn an toàn.
-- Duy trì lịch tưới và hard-safety tại gateway khi mất kết nối cloud.
-- Đồng bộ telemetry, trạng thái, cấu hình và cảnh báo với CoreIoT.
-- Lưu evidence có thể truy vết, phân biệt rõ mô phỏng, platform và HIL.
+Repository chứa mã triển khai đọc cảm biến vật lý. **Bản firmware này chưa
+được nghiệm thu với cảm biến, van/bơm thật hoặc triển khai đầy đủ trên Pi.**
+Các thử nghiệm CoreIoT và HIL trước đây sử dụng dữ liệu tổng hợp; xem
+[phạm vi kiểm chứng](docs/validation.md). Giữ `finalHardwareVerified=false`.
 
 ## Kiến trúc
 
 ```text
-Sensor nodes (ESP32)
-        │ ESP-NOW
-        ▼
-ESP32 Bridge ── UART/USB ── Raspberry Pi Gateway ── MQTT ── CoreIoT
-        │                         │
-        └── Central/Manifold ◄────┘
-              valve + pump
+2 Sensor Node ── ESP-NOW ── Bridge ── USB/UART ── Raspberry Pi Gateway
+                              │                         │
+                           ESP-NOW                    MQTT
+                              │                         │
+                           Central                   CoreIoT
+                     2 van + 1 bơm, flow/phao
 ```
 
-Gateway là thành phần do sinh viên xây dựng, không phải ThingsBoard/CoreIoT
-Edge. Gateway giữ quyền quyết định cuối cùng đối với scheduler, arbitration,
-safety, actuator state/ACK và degraded replay; CoreIoT đảm nhiệm lớp platform.
+Gateway quyết định lịch tưới, phân bổ vùng và safety. Central thực thi GPIO,
+kiểm tra phao và tự tắt khi hết lease. CoreIoT gửi yêu cầu manual, lưu dữ liệu
+và hiển thị trạng thái; recommendation không tự điều khiển bơm/van.
+Đây là Gateway do đồ án xây dựng, không phải ThingsBoard/CoreIoT Edge.
 
-## Thành phần trong repository
+## Thành phần
 
-| Thư mục | Nội dung |
+| Đường dẫn | Nội dung |
 |---|---|
-| [`docs/final`](docs/final/README.md) | SRS, thiết kế hệ thống và knowledge base đã chốt |
-| [`docs/audits`](docs/audits/CoreIoT_SRS_Design_Crosscheck.md) | Cross-check và traceability kỹ thuật |
-| [`implementation/gateway`](implementation/gateway/README.md) | Gateway Python, scheduler, safety và CoreIoT Gateway API |
-| [`implementation/coreiot`](implementation/coreiot/README.md) | Profile, rule chain, manifest và script sinh/kiểm tra artifact |
-| [`implementation/firmware`](implementation/firmware/README.md) | Firmware ESP32 và chương trình chẩn đoán/HIL |
-| [`tests`](tests/README.md) | Unit test và regression/static checks |
-| [`evidence`](evidence/README.md) | Evidence theo `run_id` và mức kiểm chứng |
+| [implementation/gateway](implementation/gateway/README.md) | Python runtime, điều khiển, lịch, MQTT và UART |
+| [implementation/firmware/smartfarm](implementation/firmware/smartfarm/README.md) | Một project PlatformIO cho hai Sensor, Bridge và Central |
+| [implementation/coreiot](implementation/coreiot/README.md) | Profile, rule chain, dashboard action và thiết lập |
+| [docs](docs/README.md) | Kiến trúc, phần cứng, triển khai, giao thức và kiểm chứng |
+| [tests](tests/README.md) | Unit test và kiểm tra cấu trúc CoreIoT |
+| [evidence](evidence/README.md) | Minh chứng lịch sử chọn lọc |
+| [tools/release](tools/release/build_submission.py) | Đóng gói source nộp |
 
-## Phạm vi đã kiểm chứng
+## Bắt đầu
 
-| Hạng mục | Mức evidence | Giới hạn diễn giải |
-|---|---|---|
-| CoreIoT telemetry và vertical slice ban đầu | `SIM+PLATFORM` | Có platform thật, dữ liệu/actuator mô phỏng |
-| Gateway v2.3 hai Field, scheduler và hard-safety | `local-tested` / `live-observed` | Không đồng nghĩa phần cứng tưới hoàn chỉnh |
-| Alarm, degraded/reconnect và schedule | `live-verified` theo từng bundle | Chỉ khẳng định đúng originator và kịch bản đã ghi nhận |
-| ESP32-S3 ESP-NOW và runtime ba board | `HIL` | Output LED/GPIO và ACK, chưa phải van/bơm cơ khí |
-
-Repository **không tuyên bố đã hoàn tất bằng chứng `PHY`** cho toàn bộ hệ tưới.
-Mỗi bundle trong `evidence/runs/` ghi rõ thành phần thật, thành phần mô phỏng và
-kết quả quan sát.
-
-## Chạy kiểm thử cục bộ
-
-Yêu cầu Python 3. Các lệnh không cần credential CoreIoT:
+Python 3.10 trở lên; chạy từ repository root:
 
 ```powershell
-python -m unittest discover -s tests/unit -v
-python -m unittest discover -s tests/regression -v
-python implementation/gateway/simulator_v23.py `
-  --config implementation/gateway/config/devices.v23.example.json `
-  --offline --ticks 40 --interval 0
+py -3 -m pip install -r implementation/gateway/requirements.txt
+py -3 implementation/gateway/gateway_runtime.py --help
+py -3 -m unittest discover -s tests/unit -v
+py -3 -m unittest discover -s tests/regression -v
+pio run -d implementation/firmware/smartfarm
 ```
 
-Firmware HIL sử dụng PlatformIO; xem hướng dẫn tại
-[`implementation/firmware/smartfarm_hil_v1`](implementation/firmware/smartfarm_hil_v1/README.md).
+Lệnh PlatformIO chỉ build. Trước khi chạy phần cứng, thực hiện
+[cấu hình và triển khai](docs/deployment.md), điền MAC/chân nối và hiệu chuẩn
+theo [hướng dẫn firmware](implementation/firmware/smartfarm/README.md).
+`--offline` vẫn cần cảm biến và Central; chỉ ngắt kết nối MQTT.
 
-## Tài liệu nền chính thức
+## Bản nộp và bản phát triển
 
-1. [SRS v2.2](docs/final/requirements/SRS_v2.2.md)
-2. [Thiết kế hệ thống v2.2](docs/final/system_design/RB%20Thiet_ke_he_thong_v2.2_SmartFarm_an_toan_rebuild.docx)
-3. [CoreIoT Smart Irrigation Knowledge Base](docs/final/research/CoreIoT_Smart_Irrigation_Knowledge_Base.md)
+Tên file thể hiện chức năng; phiên bản phát hành quản lý bằng Git. Phiên bản
+schema/protocol vẫn được giữ trong nội dung hợp đồng dữ liệu.
 
-## Bảo mật và tái lập
+SIM/HIL, generator CoreIoT cũ, tài liệu làm việc và log thô được giữ riêng trên
+máy phát triển, không thuộc bản clone này. Cần sao lưu local_dev và các thư
+mục nội bộ riêng khi chuyển máy. Lịch sử Git cũ vẫn chứa mã mô phỏng.
+Mock trong unit test chỉ kiểm tra logic, không sinh telemetry cho runtime.
 
-Credential được đọc từ biến môi trường. Repository không lưu `.env`, access
-token, credential gateway, build cache, firmware backup hoặc trạng thái runtime.
-Các file `*.example.*` chỉ cung cấp cấu hình mẫu.
+Tạo gói bằng `py -3 tools/release/build_submission.py`. Kết quả nằm ở
+`deliverables/source/smartfarm-source.zip`. PDF báo cáo và slide sẽ phát hành
+riêng khi chốt bản nộp. Không commit token, .env, cấu hình triển khai riêng,
+cache hoặc binary.
 
-## Ghi chú bản quyền
+## Bản quyền
 
-Đây là repository phục vụ đồ án tốt nghiệp. Chưa cấp giấy phép mã nguồn mở;
+Repository phục vụ đồ án tốt nghiệp. Chưa cấp giấy phép mã nguồn mở;
 mọi quyền được bảo lưu nếu không có thỏa thuận khác.

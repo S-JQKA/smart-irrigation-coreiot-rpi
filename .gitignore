@@ -22,3 +22,15 @@ tools/workspace_management/
 
 # Deliverables are added only when the submission versions are finalized
 deliverables/
+
+# Development inputs and HIL are kept locally; product code must not import them.
+/local_dev/
+/tmp/
+/.codex-remote-attachments/
+
+# Historical documents and raw evidence remain on the development machine.
+/docs/final/
+/docs/audits/
+/evidence/runs/
+/evidence/curated/slides/
+/tools/document_generation/

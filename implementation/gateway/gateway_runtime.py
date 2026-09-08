@@ -1,4 +1,4 @@
-"""ACK-driven SmartFarm Gateway runtime for HIL and Raspberry Pi hardware."""
+"""ACK-driven SmartFarm Gateway for physical sensors and Central outputs."""
 
 from __future__ import annotations
 
@@ -11,17 +11,21 @@ import time
 from pathlib import Path
 from typing import Any
 
-from analytics_hook import AdvisoryAnalyticsRunner, NoOpAnalyticsHook
+from analytics_hook import AdvisoryAnalyticsRunner
+from anomaly_detector import (
+    build_analytics_hook as _build_analytics_hook,
+    merge_analytics_telemetry as _merge_analytics_telemetry,
+)
 from coreiot.gateway_client import GatewayClient
 from coreiot.gateway_protocol import RpcCommand
 from hardware_adapter import PeerStatus, SensorSample
 from runtime_state import FieldConfigStore, PersistentCommandLedger, clock_is_ready, runtime_state_dir
-from simulator_v22 import load_config, settings_from_env, utc_ms
-from simulator_v23 import (
+from configuration import load_config, settings_from_env, utc_ms
+from irrigation_controller import (
     LOCAL_SCHEDULE_ATTRIBUTE,
     SHARED_ATTRIBUTE_WATCHES,
     LocalScheduleRunner,
-    SimulationModelV23,
+    IrrigationController,
     apply_field_configuration_attribute,
     apply_local_schedule_attribute,
     apply_rpc_with_authority,
@@ -32,7 +36,7 @@ from uart_espnow_adapter import UartEspNowAdapter
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG = BASE_DIR / "config" / "devices.v23.hil-field1.json"
+DEFAULT_CONFIG = BASE_DIR / "config" / "hardware.example.json"
 LOG = logging.getLogger("smartfarm.gateway.runtime")
 
 
@@ -106,7 +110,7 @@ def _restore_schedules(
 def _load_schedule_runner(
     config: dict[str, Any],
     path: Path,
-    model: SimulationModelV23,
+    model: IrrigationController,
     now_ms: int,
 ) -> LocalScheduleRunner:
     restored = _restore_schedules(config, path, now_ms)
@@ -148,7 +152,7 @@ def _load_schedule_runner(
     return runner
 
 
-def _rpc_detail(model: SimulationModelV23, command: RpcCommand) -> str | None:
+def _rpc_detail(model: IrrigationController, command: RpcCommand) -> str | None:
     target = next((zone for zone in model.zones.values() if zone.valve_device == command.device), None)
     if target is not None:
         detail = target.decision_reason or target.safety_block_reason
@@ -158,7 +162,7 @@ def _rpc_detail(model: SimulationModelV23, command: RpcCommand) -> str | None:
 
 
 def _enforce_hardware_zone_modes(
-    model: SimulationModelV23,
+    model: IrrigationController,
     hardware_zones: tuple[str, ...],
 ) -> None:
     """Keep non-physical Fields disabled even when persisted state is restored."""
@@ -183,14 +187,14 @@ def _validate_runtime_mapping(
     }
     mapped_devices = tuple(str(value) for value in runtime.get("mappedDevices", []))
     hardware_zones = tuple(str(value) for value in runtime.get("hardwareZones", []))
-    simulation = config.get("simulation", {})
-    raw_concurrency = simulation.get("maxConcurrentZones", 1) if isinstance(simulation, dict) else 1
+    control = config.get("control", {})
+    raw_concurrency = control.get("maxConcurrentZones", 1) if isinstance(control, dict) else 1
     if (
         not isinstance(raw_concurrency, int)
         or isinstance(raw_concurrency, bool)
         or raw_concurrency not in {1, 2}
     ):
-        raise ValueError("simulation.maxConcurrentZones must be 1 or 2")
+        raise ValueError("control.maxConcurrentZones must be 1 or 2")
     if (
         not mapped_devices
         or len(set(mapped_devices)) != len(mapped_devices)
@@ -200,7 +204,7 @@ def _validate_runtime_mapping(
     if not hardware_zones or len(set(hardware_zones)) != len(hardware_zones):
         raise ValueError("runtime.hardwareZones must contain unique Fields")
     if raw_concurrency > len(hardware_zones):
-        raise ValueError("simulation.maxConcurrentZones exceeds mapped hardware Fields")
+        raise ValueError("control.maxConcurrentZones exceeds mapped hardware Fields")
 
     raw_peer_map = runtime.get("peerDeviceMap", {})
     if not isinstance(raw_peer_map, dict) or not raw_peer_map:
@@ -229,18 +233,19 @@ def _validate_runtime_mapping(
     if set(sensor_node_zones.values()) != set(hardware_zones):
         raise ValueError("every hardware Field requires a mapped Sensor Node")
 
-    if runtime_profile == "HIL_FIELD1_3BOARD":
-        if hardware_zones != ("field-1",):
-            raise ValueError("three-board HIL may map only field-1")
-        if any(known_devices[device] == "field-2" for device in mapped_devices):
-            raise ValueError("three-board HIL cannot announce Field 2 devices")
-    elif runtime_profile in {"HIL_TWO_FIELD_4BOARD", "HARDWARE_TWO_FIELD"}:
-        if set(hardware_zones) != {"field-1", "field-2"}:
-            raise ValueError("two-Field hardware/HIL profile requires both Fields")
-        if set(mapped_devices) != set(known_devices):
-            raise ValueError("two-Field hardware/HIL profile must map the complete topology")
-        if len(sensor_node_zones) < 2:
-            raise ValueError("two-Field hardware/HIL profile requires at least two Sensor Nodes")
+    if runtime_profile != "HARDWARE_TWO_FIELD":
+        raise ValueError("product runtime requires HARDWARE_TWO_FIELD")
+    if set(hardware_zones) != {"field-1", "field-2"} or set(mapped_devices) != set(known_devices):
+        raise ValueError("physical runtime requires the complete two-Field topology")
+    if len(sensor_node_zones) != 2:
+        raise ValueError("physical runtime requires two Sensor Nodes")
+    for device, owner in owners.items():
+        profile = next(item.get("profile", "") for item in devices if item["name"] == device)
+        if any(kind in profile for kind in ("Water Meter", "Smart Valve", "Pump Controller", "Manifold Controller")):
+            if owner != "central":
+                raise ValueError("hydraulics and actuator devices must be owned by Central")
+        elif owner not in sensor_node_zones or sensor_node_zones[owner] != known_devices[device]:
+            raise ValueError("soil and environment devices must belong to their Field Sensor Node")
 
     return mapped_devices, hardware_zones, sensor_node_zones, peer_device_map
 
@@ -251,17 +256,17 @@ def run(
     offline: bool = False,
     ticks: int | None = None,
     interval: float | None = None,
+    advisory_only: bool = False,
 ) -> None:
     config = load_config(config_path)
+    if "simulation" in config or not isinstance(config.get("control"), dict):
+        raise ValueError("product runtime requires control configuration without simulation inputs")
     runtime_profile = str(config.get("runtimeProfile", "")).upper()
     if runtime_profile not in {
-        "HIL_FIELD1_3BOARD",
-        "HIL_TWO_FIELD_4BOARD",
         "HARDWARE_TWO_FIELD",
     }:
         raise ValueError(
-            "gateway_runtime.py requires HIL_FIELD1_3BOARD, "
-            "HIL_TWO_FIELD_4BOARD or HARDWARE_TWO_FIELD"
+            "gateway_runtime.py requires HARDWARE_TWO_FIELD"
         )
     if str(config.get("controlAuthority", "LOCAL")).upper() != "LOCAL":
         raise ValueError("hardware runtime requires LOCAL authority for every Field")
@@ -279,11 +284,12 @@ def run(
     state_directory = runtime_state_dir(config_path, runtime_profile)
     schedule_path = state_directory / "schedules.json"
     now_ms = utc_ms()
-    model = SimulationModelV23.from_config(config)
+    model = IrrigationController.from_config(config)
     if interval is not None:
         model.interval_seconds = interval
     expected = runtime.get("expectedSensors", {})
     minimum = runtime.get("minValidSensors", {})
+    agreement_tolerance = runtime.get("sensorAgreementTolerancePct", {})
     if any(zone_id not in model.zones for zone_id in hardware_zones):
         raise ValueError("runtime.hardwareZones contains an unknown Field")
     adapter = UartEspNowAdapter(
@@ -299,14 +305,21 @@ def run(
         adapter,
         expected_sensors=expected if isinstance(expected, dict) else {},
         min_valid_sensors=minimum if isinstance(minimum, dict) else {},
+        sensor_agreement_tolerance_pct=(
+            agreement_tolerance if isinstance(agreement_tolerance, dict) else {}
+        ),
     )
     model.required_config_zones = set(hardware_zones)
     field_store = FieldConfigStore(state_directory / "field-config.json")
     restore_field_configuration(model, field_store.load(), now_ms)
     # A state directory may outlive a profile change.  Never let an old
     # last-known-valid config re-enable a Field that has no physical zone in
-    # the active HIL/hardware mapping.
+    # the active hardware mapping.
     _enforce_hardware_zone_modes(model, hardware_zones)
+    if advisory_only:
+        for zone in model.zones.values():
+            zone.control_mode = "DISABLED"
+        LOG.info("advisory-only mode: RPC/attributes disabled and all Fields locked DISABLED")
     require_ntp = bool(runtime.get("requireNtpSync", True))
     is_clock_ready = lambda: clock_is_ready(require_ntp=require_ntp)  # noqa: E731
     schedule_loaded = is_clock_ready()
@@ -315,7 +328,7 @@ def run(
         if schedule_loaded
         else LocalScheduleRunner.from_config({**config, "localSchedules": []}, model, now_ms)
     )
-    analytics = AdvisoryAnalyticsRunner(NoOpAnalyticsHook())
+    analytics = AdvisoryAnalyticsRunner(_build_analytics_hook(config, mapped_devices))
 
     profile_by_device = {
         item["name"]: item.get("profile")
@@ -328,6 +341,12 @@ def run(
     lease_renewed_at: dict[str, int] = {}
 
     def handle_rpc(command: RpcCommand) -> tuple[bool, str, str]:
+        if advisory_only:
+            target = next(
+                (zone for zone in model.zones.values() if zone.valve_device == command.device),
+                None,
+            )
+            return False, target.valve_state if target is not None else "OFF", "ADVISORY_ONLY"
         if command.method == "SET_LOCAL_SCHEDULE":
             if not is_clock_ready():
                 return False, "OFF", "INVALID_COMMAND"
@@ -338,6 +357,12 @@ def run(
         return apply_rpc_with_authority(model, command, "LOCAL", {})
 
     def handle_attributes(body: dict[str, Any]) -> None:
+        if advisory_only:
+            LOG.info(
+                "attribute ignored device=%s reason=ADVISORY_ONLY",
+                body.get("device"),
+            )
+            return
         target_device = str(body.get("device", ""))
         if target_device not in mapped_devices:
             LOG.warning(
@@ -530,6 +555,8 @@ def run(
                 for device, samples in latest_readings.items()
                 if device in mapped_devices
             }
+            analytics_result = analytics.status()
+            _merge_analytics_telemetry(latest_readings, analytics_result.telemetry)
             stale_peers = {
                 peer_id
                 for peer_id, last_seen in peer_last_seen.items()
@@ -553,7 +580,6 @@ def run(
             analytics.submit(
                 {"ts": now_ms, "readings": latest_readings, "systemMode": model.site.system_mode}
             )
-            analytics_result = analytics.status()
             LOG.info(
                 "tick=%s profile=%s mappedOnline=%s controller=%s mode=%s analytics=%s",
                 iteration,
@@ -574,9 +600,14 @@ def run(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="SmartFarm ACK-driven HIL/hardware Gateway")
+    parser = argparse.ArgumentParser(description="SmartFarm physical-sensor Gateway")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument(
+        "--advisory-only",
+        action="store_true",
+        help="publish telemetry/analytics while rejecting RPC and cloud configuration",
+    )
     parser.add_argument("--ticks", type=int, default=None)
     parser.add_argument("--interval", type=float, default=None)
     parser.add_argument("--log-level", default="INFO")
@@ -589,4 +620,10 @@ if __name__ == "__main__":
         level=getattr(logging, args.log_level.upper()),
         format="%(asctime)s %(levelname)s %(message)s",
     )
-    run(args.config, offline=args.offline, ticks=args.ticks, interval=args.interval)
+    run(
+        args.config,
+        offline=args.offline,
+        ticks=args.ticks,
+        interval=args.interval,
+        advisory_only=args.advisory_only,
+    )

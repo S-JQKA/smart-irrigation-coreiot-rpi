@@ -1,21 +1,12 @@
-# Tests
+# SmartFarm tests
 
-Khu vực dành cho unit test, integration test, scenario test và traceability
-matrix của các test case trong SRS v2.2.
-
-Các behavioral test của Gateway xác nhận hành vi runtime. Static CoreIoT checks
-chỉ xác nhận cấu trúc artifact và không được đổi tên thành platform acceptance.
-
-Baseline sau khi thêm `HIL_TWO_FIELD_4BOARD` là 145 test:
-
-- 109 unit test;
-- 36 regression/static-contract test.
-
-Chạy toàn bộ bằng:
+Chạy từ repository root, không cần local_dev:
 
 ```powershell
-py -3 -m unittest tests.unit.test_gateway_simulator_v22 tests.unit.test_gateway_protocol tests.unit.test_gateway_control_v23 tests.unit.test_gateway_client tests.unit.test_gateway_runtime_v23 tests.regression.test_coreiot_v23_minimal tests.regression.test_coreiot_v22_regression
+py -3 -m unittest discover -s tests/unit -v
+py -3 -m unittest discover -s tests/regression -v
 ```
 
-`PASS` ở đây xác nhận logic cục bộ và contract. Nó không thay thế phép thử
-serial/ESP-NOW, Pi, relay, flow, tank hoặc tải tưới thật.
+Unit test kiểm tra MQTT/RPC, analytics, nguồn/CRC, mất mẫu, đồng thuận, slot tưới, tank-low, ACK timeout, flow stale và counter reset. Test double chỉ phục vụ kiểm thử. Regression CoreIoT kiểm cấu trúc artifact, không xác nhận live tenant.
+
+Bộ test dùng mô hình tưới và HIL cũ nằm trên máy ở local_dev/tests, chạy bằng `py -3 local_dev/run_tests.py`. Không suy diễn test/build thành nghiệm thu cảm biến, tải nước hoặc Pi.

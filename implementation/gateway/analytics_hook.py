@@ -5,7 +5,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 
@@ -14,6 +14,7 @@ class AnalyticsResult:
     recommendation: str = "NONE"
     score: float | None = None
     reason: str = "ANALYTICS_DISABLED"
+    telemetry: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 class AnalyticsHook(Protocol):

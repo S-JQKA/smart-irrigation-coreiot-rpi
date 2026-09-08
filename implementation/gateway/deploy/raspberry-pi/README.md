@@ -8,7 +8,7 @@ xây dựng, không phải ThingsBoard/CoreIoT Edge.
 1. Chép workspace vào `/opt/smartfarm-gateway`.
 2. Tạo user hệ thống `smartfarm-gateway`, thêm vào group `dialout`.
 3. Tạo virtualenv và cài `implementation/gateway/requirements.txt`.
-4. Chép `devices.v23.hardware-two-field.example.json` thành
+4. Chép `implementation/gateway/config/hardware.example.json` thành
    `/etc/smartfarm-gateway/devices.json`, sau đó thay serial path và mapping vật lý.
 5. Chép `gateway.env.example` thành `/etc/smartfarm-gateway/gateway.env`, điền
    token thật và đặt permission `0600`.

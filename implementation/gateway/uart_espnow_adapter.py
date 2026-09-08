@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from hardware_adapter import ActuatorAck, HardwareAdapter, HardwareEvent, PeerStatus, SensorSample
+from hardware_adapter import ActuatorAck, FlowSample, HardwareAdapter, HardwareEvent, PeerStatus, SensorSample
 
 
 LOG = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class UartEspNowAdapter(HardwareAdapter):
         port: str,
         zone_ids: list[str] | tuple[str, ...],
         *,
-        runtime_profile: str = "HIL_FIELD1_3BOARD",
+        runtime_profile: str = "HARDWARE_TWO_FIELD",
         baudrate: int = 115_200,
         ack_timeout_seconds: float = 1.0,
         max_attempts: int = 3,
@@ -111,6 +111,7 @@ class UartEspNowAdapter(HardwareAdapter):
         self._sequence = 0
         self._last_sensor_sequence: dict[str, int] = {}
         self._last_sensor_seen_ms: dict[str, int] = {}
+        self._sensor_boot_ids: dict[str, str] = {}
         self._zone_states = {zone_id: "OFF" for zone_id in self.zone_ids}
         self._confirmed_zones: set[str] = set()
         self._pump_state = "OFF"
@@ -261,6 +262,25 @@ class UartEspNowAdapter(HardwareAdapter):
     def _handle_frame(self, payload: dict[str, Any]) -> None:
         frame_type = payload["type"]
         now_ms = int(time.time() * 1000)
+        physical = self.runtime_profile == "HARDWARE_TWO_FIELD"
+        if physical and frame_type in {"SENSOR", "FLOW", "PEER"} and payload.get("origin") != "P":
+            raise ValueError("physical runtime requires physical-source frames")
+        if frame_type == "FLOW":
+            zone_id = payload.get("zoneId")
+            sequence = payload.get("sequence")
+            counter = payload.get("pulseCounter")
+            boot = payload.get("boot")
+            rate = _optional_scaled_float(payload.get("flowRateLpm"), payload.get("flowMilliLpm"), 1000.0)
+            if (
+                payload.get("nodeId") != "central" or zone_id not in self._zone_states
+                or not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0
+                or not isinstance(counter, int) or isinstance(counter, bool) or counter < 0
+                or not isinstance(boot, str) or not boot or len(boot) > 16
+                or rate is None or rate < 0
+            ):
+                raise ValueError("invalid Central FLOW frame")
+            self._events.put(FlowSample(zone_id, sequence, now_ms, counter, rate, boot))
+            return
         if frame_type == "ACK":
             command_id = payload.get("commandId")
             zone_id = payload.get("zoneId")
@@ -310,14 +330,17 @@ class UartEspNowAdapter(HardwareAdapter):
             zone_id = payload.get("zoneId")
             sequence = payload.get("sequence")
             soil = payload.get("soilMoisture")
-            centi_soil = payload.get("soilCentiPct")
+            centi_soil = payload.get("soilCentiPct", payload.get("soil"))
             if soil is None and isinstance(centi_soil, list):
-                soil = [float(value) / 100.0 for value in centi_soil]
+                if any(isinstance(v, bool) or (v is not None and not isinstance(v, (int, float))) for v in centi_soil):
+                    raise ValueError("invalid soil ADC values")
+                soil = [float(value) / 100.0 if value is not None else None for value in centi_soil]
             if (
                 not isinstance(node_id, str)
                 or zone_id not in self._zone_states
                 or not isinstance(sequence, int)
                 or isinstance(sequence, bool)
+                or sequence < 0
                 or not isinstance(soil, list)
                 or not soil
             ):
@@ -327,16 +350,24 @@ class UartEspNowAdapter(HardwareAdapter):
             now_ms = int(time.time() * 1000)
             last = self._last_sensor_sequence.get(node_id, -1)
             last_seen = self._last_sensor_seen_ms.get(node_id, 0)
-            if sequence <= last and now_ms - last_seen <= 30_000:
+            boot = payload.get("boot", "")
+            if physical and (not isinstance(boot, str) or not boot or len(boot) > 16):
+                raise ValueError("physical Sensor requires a boot identifier")
+            same_boot = boot == self._sensor_boot_ids.get(node_id, "")
+            if sequence <= last and (same_boot if physical else now_ms - last_seen <= 30_000):
                 return
-            values = tuple(float(value) for value in soil)
-            if any(not math.isfinite(value) or value < 0 or value > 100 for value in values):
+            if physical and (payload.get("flowRateLpm") is not None or payload.get("pulseCounter") is not None):
+                raise ValueError("physical Sensor Node cannot own hydraulic measurements")
+            if len(soil) > 4 or any(isinstance(v, bool) or (v is not None and not isinstance(v, (int, float))) for v in soil):
+                raise ValueError("invalid soil sample types")
+            values = tuple(float(value) if value is not None else None for value in soil)
+            if any(value is not None and (not math.isfinite(value) or value < 0 or value > 100) for value in values):
                 raise ValueError("soil moisture outside 0..100")
             air_temp = _optional_scaled_float(
-                payload.get("airTemp"), payload.get("airTempCentiC"), 100.0
+                payload.get("airTemp"), payload.get("airTempCentiC", payload.get("tC")), 100.0
             )
             air_humidity = _optional_scaled_float(
-                payload.get("airHumidity"), payload.get("airHumidityCentiPct"), 100.0
+                payload.get("airHumidity"), payload.get("airHumidityCentiPct", payload.get("rh")), 100.0
             )
             light_lux = _optional_float(payload.get("lightLux"))
             flow_rate = _optional_scaled_float(
@@ -351,6 +382,7 @@ class UartEspNowAdapter(HardwareAdapter):
             if flow_rate is not None and flow_rate < 0:
                 raise ValueError("flow rate must be non-negative")
             self._last_sensor_sequence[node_id] = sequence
+            self._sensor_boot_ids[node_id] = boot
             self._last_sensor_seen_ms[node_id] = now_ms
             self._events.put(
                 SensorSample(
@@ -373,6 +405,8 @@ class UartEspNowAdapter(HardwareAdapter):
             role = payload.get("role")
             if not isinstance(peer_id, str) or not isinstance(role, str):
                 raise ValueError("invalid PEER identity")
+            if physical and (peer_id != "central" or role != "CENTRAL" or not isinstance(payload.get("tankLow"), bool)):
+                raise ValueError("physical tank state must come from Central")
             self._events.put(
                 PeerStatus(
                     peer_id=peer_id,

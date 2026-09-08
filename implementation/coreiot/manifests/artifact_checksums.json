@@ -1,0 +1,21 @@
+{
+  "sha256": {
+    "profiles/sf_env_sensor_cluster.json": "dc60d3bcc02091735ac1ad7cd42df0623d0fb0a279c22ae4c0647825473a1016",
+    "profiles/sf_gateway.json": "b7aa1de642959b7801550e665d2c901bc2d041607ddca0364515da528c3184d4",
+    "profiles/sf_manifold_controller.json": "d1e407c5a6805b23f54158981af80dd2ec2ea2eac8b22a8a0dda2679a923a1dd",
+    "profiles/sf_pump_controller.json": "371f62f54835efe89e86be4d657aa383d7486ddeedfe68b178a65bd068591681",
+    "profiles/sf_site_asset_profile.json": "ed5403ba9b9745e1fbca8bb830f3100601f8c56866cad55c941c1eeea2737812",
+    "profiles/si_field_asset_profile.json": "f32a324a200f86e92932484d22d463695d621ef67d3c73bf7f695a9a9525bcef",
+    "profiles/si_smart_valve.json": "a791ca6808a27e21c76159267d40cd80308049aa12898a49776ef594d5a00be5",
+    "profiles/si_soil_moisture_sensor.json": "5642cae6ef38a424c7705df1f0dce47bfcf8d1e7c425a6ae3ef98ee55e7fc38b",
+    "profiles/si_water_meter.json": "4936fca85dd29cd1c857600aeb37efd3a23ddcfc74d1d8639bb527642ab6d486",
+    "rule_chains/si_count_alarms.json": "d732438f99e994cb2149e98c994f3c5b0f4bc2032ec562a2fac67478ab0d85f8",
+    "rule_chains/si_environment.json": "80bbb68963dcb555ac921d6967bfdd798807f3572d13b72a49d2999d5a3121f6",
+    "rule_chains/si_field.json": "0b42806639c1990b9bab33a2246b78aa2e296a96adcdf26c8e5d5e9c4feb6e7a",
+    "rule_chains/si_field_recommendation.json": "4b91ddbf89fbb5898bfba46b7b84a998864b7a8776425fadb7873860873ea2c6",
+    "rule_chains/si_smart_valve.json": "85f218894012f0bc050d52409efbce2e978346ac37a51e4fcde32e0fda175ba2",
+    "rule_chains/si_soil_moisture.json": "741cc8db677fe2bd9d52f83d40e78372402ceafd88b1a64bbac84ebd531538a6",
+    "rule_chains/si_water_meter.json": "0e9858d325ce82e1c5071a559d9cb08cbdd76b09e344574e0138d7f81bcc057c",
+    "dashboard_actions/set_local_schedule_shared_attribute.js": "cbef585eae35cc2479ee161cedeaee513b0182633efc678ca349d5ed14197eed"
+  }
+}

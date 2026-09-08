@@ -1,2 +1,0 @@
-cd C:\Users\voles\Documents\RAS\implementation\smartfarm-gateway-sim
-py gateway_sim.py --ticks 20 --seed 20260803 --run-id EV-P0-SIMPLATFORM-20260803-R01 --log-path ..\..\evidence\runs\EV-P0-SIMPLATFORM-20260803-R01\raw\gateway_sim.log --interval-seconds 1
