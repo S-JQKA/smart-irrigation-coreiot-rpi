@@ -102,7 +102,7 @@ class ZoneRuntime:
 
 
 LOCAL_SCHEDULE_ATTRIBUTE = "localScheduleConfig"
-FIELD_CONFIGURATION_ATTRIBUTES = (
+FIELD_CORE_ATTRIBUTES = (
     "controlMode",
     "criticalMoisture",
     "minMoistureThreshold",
@@ -110,6 +110,8 @@ FIELD_CONFIGURATION_ATTRIBUTES = (
     "maxMoistureThreshold",
     "floodMoistureThreshold",
 )
+FIELD_QUOTA_ATTRIBUTES = ("maxWaterPerCycle", "maxWaterPerDay", "maxDurationSec")
+FIELD_CONFIGURATION_ATTRIBUTES = (*FIELD_CORE_ATTRIBUTES, *FIELD_QUOTA_ATTRIBUTES)
 SHARED_ATTRIBUTE_WATCHES = (*FIELD_CONFIGURATION_ATTRIBUTES, LOCAL_SCHEDULE_ATTRIBUTE)
 
 
@@ -186,7 +188,7 @@ def apply_field_configuration_attribute(
     if (
         model.requires_validated_configuration
         and (not runtime.config_validated)
-        and (set(updates) != set(FIELD_CONFIGURATION_ATTRIBUTES))
+        and not set(FIELD_CORE_ATTRIBUTES).issubset(updates)
     ):
         return (False, "INCOMPLETE_INITIAL_CONFIG")
     current = effective_field_config(model, target.zone_id)
@@ -197,7 +199,7 @@ def apply_field_configuration_attribute(
     mode = mode.upper()
     candidate["controlMode"] = mode
     numeric_keys = [
-        key for key in FIELD_CONFIGURATION_ATTRIBUTES if key != "controlMode"
+        key for key in FIELD_CORE_ATTRIBUTES if key != "controlMode"
     ]
     if any(
         (
@@ -217,6 +219,14 @@ def apply_field_configuration_attribute(
     ]
     if any((left >= right for left, right in zip(ordered, ordered[1:]))):
         return (False, "INVALID_THRESHOLD_ORDER")
+    if any(not isinstance(candidate[k], (int, float)) or isinstance(candidate[k], bool)
+           or not math.isfinite(candidate[k]) or candidate[k] <= 0
+           for k in FIELD_QUOTA_ATTRIBUTES):
+        return (False, "INVALID_QUOTA_RANGE")
+    if candidate["maxWaterPerDay"] < candidate["maxWaterPerCycle"]:
+        return (False, "DAILY_QUOTA_BELOW_CYCLE")
+    if not float(candidate["maxDurationSec"]).is_integer():
+        return (False, "DURATION_MUST_BE_INTEGER_SECONDS")
     previous_mode = target.control_mode
     combined = {**_threshold_mapping(model._limits_for(target.zone_id)), **candidate}
     model.zone_limits[target.zone_id] = IrrigationThresholds.from_mapping(combined)
@@ -1285,6 +1295,9 @@ class IrrigationController(ControllerState):
                     "targetMoisture": effective_limits.target_moisture,
                     "maxMoistureThreshold": effective_limits.max_moisture,
                     "floodMoistureThreshold": effective_limits.flood_moisture,
+                    "maxWaterPerCycle": effective_limits.max_water_per_cycle_liters,
+                    "maxWaterPerDay": effective_limits.max_water_per_day_liters,
+                    "maxDurationSec": effective_limits.max_duration_seconds,
                 }
             )
             schedule = runtime.local_schedule

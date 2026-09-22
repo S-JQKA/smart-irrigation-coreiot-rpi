@@ -1,0 +1,23 @@
+<section class="sf-config">
+  <header><div><h2>Cấu hình tưới</h2><p>Chọn khu, điều chỉnh thông số và theo dõi Gateway áp dụng.</p></div>
+    <label class="sf-picker">Khu tưới<select data-role="field" aria-label="Chọn khu tưới"></select></label>
+  </header>
+  <p data-role="device" class="sf-device"></p>
+  <form data-role="form">
+    <fieldset data-role="fields"><div class="sf-grid" data-role="inputs"></div></fieldset>
+    <p class="sf-help">Độ ẩm: khô nghiêm trọng &lt; bắt đầu tưới &lt; mục tiêu &lt; tối đa &lt; nguy cơ ngập. Hạn mức ngày ≥ hạn mức mỗi lần.</p>
+    <p data-role="message" role="status" aria-live="polite"></p>
+    <div class="sf-buttons"><button type="button" data-role="reload">Tải lại cấu hình</button><button type="button" data-role="undo">Hoàn tác</button><button type="submit" data-role="save">Lưu cấu hình</button></div>
+  </form>
+  <section class="sf-manual" aria-label="Tưới thủ công">
+    <strong>Tưới thủ công</strong>
+    <p class="sf-help" data-role="manualHint"></p>
+    <div class="sf-buttons">
+      <label>Thời gian tưới (giây)<input data-role="duration" type="number" min="1" max="300" step="1" value="60"></label>
+      <button type="button" data-role="start">Tưới</button>
+      <button type="button" data-role="stop">Dừng tưới</button>
+    </div>
+    <p data-role="commandMessage" role="status" aria-live="polite"></p>
+  </section>
+  <aside class="sf-feedback"><div class="sf-feedback-top"><strong>Trạng thái cấu hình</strong><span data-role="ack" class="sf-badge sf-neutral" role="status" aria-live="polite">○ Chưa có phản hồi</span></div><p data-role="hint" class="sf-status-hint"></p><p data-role="applied" class="sf-help"></p><details><summary>Chi tiết</summary><p data-role="detail" class="sf-detail"></p></details></aside>
+</section>

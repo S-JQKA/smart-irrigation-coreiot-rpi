@@ -1,7 +1,7 @@
 # Phạm vi kiểm chứng
 
-| Phạm vi | Kết luận sử dụng được|
-|---|---|---|
+| Phạm vi | Kết luận sử dụng được |
+|---|---|
 | Python unit test | Logic Gateway/parser/safety/analytics với đầu vào kiểm soát | 
 | CoreIoT regression | Cấu trúc JSON, graph, ownership, checksum | 
 | Firmware build | Bốn target biên dịch được | 

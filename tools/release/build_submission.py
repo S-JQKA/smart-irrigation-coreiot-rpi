@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "deliverables/source/smartfarm-source.zip"
 ROOTS = ("implementation", "tests", "evidence/curated/platform", "evidence/curated/hil", "tools/release")
 EXCLUDED = {".pio", "__pycache__", ".runtime", "import_ready", "logs", ".pytest_cache", "final", "audits", "planning", "report"}
-SUFFIXES = {".py", ".md", ".json", ".js", ".cpp", ".h", ".ini", ".txt", ".service", ".example", ".png"}
+SUFFIXES = {".py", ".md", ".json", ".js", ".html", ".css", ".cjs", ".cpp", ".h", ".ini", ".txt", ".service", ".example", ".png"}
 
 
 def source_files():

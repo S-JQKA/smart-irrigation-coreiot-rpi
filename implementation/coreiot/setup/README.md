@@ -36,6 +36,11 @@ Dựng dashboard từ template với hai Field, soil/môi trường/lưu lượn
 valve/pump, alarm, Irrigation Tasks và Gateway Schedules. Bộ source chưa có
 export dashboard hoàn chỉnh có thể import sang mọi tenant.
 
+Widget Cấu hình tưới hiện hành có source HTML/CSS/JavaScript tại
+[field_selector](../widgets/field_selector/README.md). Hướng dẫn này liệt kê
+hai datasource Smart Valve và các key phản hồi bắt buộc. Runtime sản phẩm
+phát `fieldConfig*`; không cần chạy công cụ HIL để nhận phản hồi cấu hình.
+
 Manual RPC cần commandId duy nhất, source=MANUAL, requestedAt là thời điểm
 hiện tại, ttlSeconds và runDurationSeconds cho ON; xem
 [hợp đồng RPC](../manifests/data_contract.json). Không dùng timestamp 0 để gửi

@@ -10,6 +10,7 @@ artifact. Đây không phải bản export đầy đủ của tenant đang chạ
 | profiles/ | Profile cho Field, Site và thiết bị |
 | rule_chains/ | Lưu/chuyển telemetry, recommendation và đồng bộ task |
 | dashboard_actions/ | Action ghi shared attribute lịch Gateway |
+| [widgets/field_selector](widgets/field_selector/README.md) | Form cấu hình riêng từng Field, phản hồi Gateway và Tưới/Dừng tưới |
 | manifests/data_contract.json | Schema, telemetry, RPC và quyền điều khiển |
 | manifests/migration_manifest.json | Thứ tự import và binding |
 | manifests/artifact_checksums.json | SHA-256 của artifact đã review |

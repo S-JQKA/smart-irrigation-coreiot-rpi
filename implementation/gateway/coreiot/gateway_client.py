@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import threading
 import time
 from collections import deque
@@ -35,6 +36,20 @@ from runtime_state import PersistentCommandLedger
 
 
 LOG = logging.getLogger(__name__)
+
+# Allow minor clock skew, but never publish a simulated future to a live tenant.
+MAX_TELEMETRY_FUTURE_MS = 30_000
+
+
+def validate_live_timestamps(samples: list[dict[str, Any]], now_ms: int) -> None:
+    for sample in samples:
+        if "ts" not in sample:
+            continue  # CoreIoT assigns server time to untimestamped values.
+        timestamp = sample["ts"]
+        if isinstance(timestamp, bool) or not isinstance(timestamp, int) or timestamp < 0:
+            raise ValueError("telemetry ts must be a non-negative integer in milliseconds")
+        if timestamp > now_ms + MAX_TELEMETRY_FUTURE_MS:
+            raise ValueError("FUTURE_TELEMETRY_TIMESTAMP: batch rejected before publish/buffer")
 
 
 @dataclass(frozen=True)
@@ -83,6 +98,11 @@ class GatewayClient:
         self._attribute_request_id = 0
         self._buffer: deque[tuple[str, str, int, int]] = deque(maxlen=settings.buffer_capacity)
         self._expired_buffer_count = 0
+        self._telemetry_publish_count = 0
+        self._telemetry_puback_count = 0
+        self._telemetry_delivery_failures = 0
+        self._last_telemetry_puback_ms: int | None = None
+        self._pending_telemetry: deque[tuple[Any, float]] = deque()
         self._lock = threading.Lock()
         self._connected = False
         self._ready_event = threading.Event()
@@ -92,6 +112,7 @@ class GatewayClient:
         if settings.tls:
             self._client.tls_set()
         self._client.reconnect_delay_set(min_delay=1, max_delay=60)
+        self._client.max_queued_messages_set(settings.buffer_capacity)
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
@@ -109,6 +130,22 @@ class GatewayClient:
     def expired_buffer_count(self) -> int:
         with self._lock:
             return self._expired_buffer_count
+
+    @property
+    def telemetry_publish_count(self) -> int:
+        return getattr(self, "_telemetry_publish_count", 0)
+
+    @property
+    def telemetry_puback_count(self) -> int:
+        return getattr(self, "_telemetry_puback_count", 0)
+
+    @property
+    def telemetry_delivery_failures(self) -> int:
+        return getattr(self, "_telemetry_delivery_failures", 0)
+
+    @property
+    def last_telemetry_puback_ms(self) -> int | None:
+        return getattr(self, "_last_telemetry_puback_ms", None)
 
     def start(self, timeout_seconds: float = 10.0) -> None:
         if timeout_seconds <= 0:
@@ -197,10 +234,96 @@ class GatewayClient:
         )
         return acknowledged
 
-    def publish_telemetry(self, readings: dict[str, list[dict[str, Any]]]) -> None:
-        self._publish_or_buffer(TOPIC_TELEMETRY, encode_telemetry(readings))
+    def publish_telemetry(
+        self, readings: dict[str, list[dict[str, Any]]], timeout_seconds: float = 5.0
+    ) -> int:
+        """Publish one downstream device per QoS-1 message and require every PUBACK.
+
+        Splitting prevents one device payload from hiding delivery of the other
+        fifteen.  A successful MQTT connection alone is not delivery evidence.
+        """
+        if timeout_seconds <= 0:
+            raise ValueError("telemetry PUBACK timeout must be positive")
+        now_ms = int(time.time() * 1000)
+        for samples in readings.values():
+            validate_live_timestamps(samples, now_ms)
+        pending: list[tuple[str, Any]] = []
+        for device, samples in readings.items():
+            info = self._publish_or_buffer(
+                TOPIC_TELEMETRY, encode_telemetry({device: samples})
+            )
+            self._telemetry_publish_count = self.telemetry_publish_count + 1
+            if info is not None:
+                pending.append((device, info))
+        if not pending:
+            return 0  # Disconnected batches are buffered and replayed later.
+        deadline = time.monotonic() + timeout_seconds
+        acknowledged = 0
+        try:
+            for device, info in pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(f"CoreIoT telemetry PUBACK timeout at {device}")
+                info.wait_for_publish(timeout=remaining)
+                if hasattr(info, "is_published") and not info.is_published():
+                    raise TimeoutError(f"CoreIoT telemetry PUBACK missing at {device}")
+                acknowledged += 1
+        except (RuntimeError, ValueError, TimeoutError):
+            self._telemetry_delivery_failures = self.telemetry_delivery_failures + 1
+            raise
+        self._telemetry_puback_count = self.telemetry_puback_count + acknowledged
+        self._last_telemetry_puback_ms = int(time.time() * 1000)
+        return acknowledged
+
+    def poll_telemetry_delivery(self) -> None:
+        """Observe QoS-1 completion without waiting on the MQTT network loop.
+
+        An expired observation is a delivery failure, not permission to stop
+        local irrigation. PUBACK still does not prove tenant persistence.
+        """
+        now = time.monotonic()
+        with self._lock:
+            remaining = deque()
+            for info, deadline in self._pending_telemetry:
+                try:
+                    published = info.is_published()
+                except (RuntimeError, ValueError):
+                    published = False
+                    deadline = now
+                if published:
+                    self._telemetry_puback_count += 1
+                    self._last_telemetry_puback_ms = int(time.time() * 1000)
+                elif now >= deadline:
+                    self._telemetry_delivery_failures += 1
+                else:
+                    remaining.append((info, deadline))
+            self._pending_telemetry = remaining
+
+    def _track_telemetry(self, info: Any, timeout_seconds: float = 5.0) -> None:
+        with self._lock:
+            if len(self._pending_telemetry) >= self.settings.buffer_capacity:
+                self._pending_telemetry.popleft()
+                self._telemetry_delivery_failures += 1
+            self._pending_telemetry.append((info, time.monotonic() + timeout_seconds))
+
+    def submit_telemetry(self, readings: dict[str, list[dict[str, Any]]]) -> None:
+        """Queue product telemetry; never wait for PUBACK or fail on broker loss.
+
+        The synchronous publish_telemetry API remains for bounded diagnostic
+        runners only. Product loops and reconnect callbacks use this method.
+        """
+        now_ms = int(time.time() * 1000)
+        for samples in readings.values():
+            validate_live_timestamps(samples, now_ms)
+        self.poll_telemetry_delivery()
+        for device, samples in readings.items():
+            info = self._publish_or_buffer(TOPIC_TELEMETRY, encode_telemetry({device: samples}))
+            self._telemetry_publish_count += 1
+            if info is not None:
+                self._track_telemetry(info)
 
     def publish_gateway_telemetry(self, sample: dict[str, Any]) -> None:
+        validate_live_timestamps([sample], int(time.time() * 1000))
         self._publish_or_buffer(
             TOPIC_DEVICE_TELEMETRY,
             encode_device_telemetry(sample),
@@ -236,7 +359,12 @@ class GatewayClient:
         if not self._connected:
             self._buffer_message(topic, payload, qos)
             return None
-        info = self._client.publish(topic, payload, qos=qos)
+        try:
+            info = self._client.publish(topic, payload, qos=qos)
+        except (OSError, RuntimeError):
+            LOG.warning("MQTT transport unavailable; buffering message topic=%s", topic)
+            self._buffer_message(topic, payload, qos)
+            return None
         if info.rc != 0:
             self._buffer_message(topic, payload, qos)
             return None
@@ -256,11 +384,25 @@ class GatewayClient:
                 with self._lock:
                     self._expired_buffer_count += 1
                 continue
-            info = self._client.publish(topic, payload, qos=qos)
-            if info.rc != 0:
+            if topic in {TOPIC_TELEMETRY, TOPIC_DEVICE_TELEMETRY}:
+                try:
+                    decoded = json.loads(payload)
+                    samples = ([decoded] if topic == TOPIC_DEVICE_TELEMETRY else
+                               [sample for batch in decoded.values() for sample in batch])
+                    validate_live_timestamps(samples, int(time.time() * 1000))
+                except (ValueError, TypeError, AttributeError):
+                    LOG.error("Invalid/future buffered telemetry dropped on reconnect")
+                    continue
+            try:
+                info = self._client.publish(topic, payload, qos=qos)
+            except (OSError, RuntimeError):
+                info = None
+            if info is None or info.rc != 0:
                 with self._lock:
                     self._buffer.appendleft((topic, payload, qos, buffered_at_ms))
                 return
+            if topic == TOPIC_TELEMETRY and hasattr(self, "_pending_telemetry"):
+                self._track_telemetry(info)
 
     def _request_shared_attributes(self, device: str, keys: tuple[str, ...]) -> None:
         self._attribute_request_id += 1

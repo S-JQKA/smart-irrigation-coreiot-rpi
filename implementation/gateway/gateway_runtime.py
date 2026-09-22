@@ -8,6 +8,8 @@ import logging
 import os
 import signal
 import time
+from copy import deepcopy
+from queue import Empty, Queue
 from pathlib import Path
 from typing import Any
 
@@ -21,12 +23,12 @@ from coreiot.gateway_protocol import RpcCommand
 from hardware_adapter import PeerStatus, SensorSample
 from runtime_state import FieldConfigStore, PersistentCommandLedger, clock_is_ready, runtime_state_dir
 from configuration import load_config, settings_from_env, utc_ms
+from field_configuration import FieldConfigurationFeedback
 from irrigation_controller import (
     LOCAL_SCHEDULE_ATTRIBUTE,
     SHARED_ATTRIBUTE_WATCHES,
     LocalScheduleRunner,
     IrrigationController,
-    apply_field_configuration_attribute,
     apply_local_schedule_attribute,
     apply_rpc_with_authority,
     effective_field_config,
@@ -316,6 +318,8 @@ def run(
     # last-known-valid config re-enable a Field that has no physical zone in
     # the active hardware mapping.
     _enforce_hardware_zone_modes(model, hardware_zones)
+    field_feedback = FieldConfigurationFeedback(model, field_store)
+    attribute_inbox: Queue = Queue(maxsize=128)
     if advisory_only:
         for zone in model.zones.values():
             zone.control_mode = "DISABLED"
@@ -371,7 +375,7 @@ def run(
                 runtime_profile,
             )
             return
-        applied = apply_field_configuration_attribute(model, body, utc_ms(), field_store)
+        applied = field_feedback.apply(body, utc_ms())
         if applied is not None:
             accepted, reason = applied
             (LOG.info if accepted else LOG.warning)(
@@ -420,7 +424,10 @@ def run(
 
     def publish_snapshot() -> None:
         if client is not None and latest_readings:
-            client.publish_telemetry(latest_readings)
+            try:
+                client.submit_telemetry(latest_readings)
+            except ValueError:
+                LOG.warning("Invalid telemetry snapshot rejected; local control continues", exc_info=True)
 
     adapter.start()
     startup_acks = adapter.all_off(f"gateway-startup-all-off-{time.time_ns()}")
@@ -452,7 +459,7 @@ def run(
             client = GatewayClient(
                 settings_from_env(config),
                 handle_rpc,
-                attribute_handler=handle_attributes,
+                attribute_handler=lambda body: attribute_inbox.put_nowait(deepcopy(body)),
                 connection_handler=model.set_cloud_connected,
                 legacy_manual_off_allowed=lambda command: False,
                 command_ledger=PersistentCommandLedger(state_directory / "command-ledger.json"),
@@ -487,6 +494,14 @@ def run(
         while not stopped and (ticks is None or iteration < ticks):
             iteration += 1
             now_ms = utc_ms()
+            # Apply configuration on the control thread, never in the MQTT callback.
+            for _ in range(128):
+                try:
+                    body = attribute_inbox.get_nowait()
+                except Empty:
+                    break
+                if isinstance(body, dict):
+                    handle_attributes(body)
             if not schedule_loaded and is_clock_ready():
                 scheduler = _load_schedule_runner(config, schedule_path, model, now_ms)
                 schedule_loaded = True
@@ -550,6 +565,7 @@ def run(
             if is_clock_ready():
                 scheduler.dispatch_due(model, now_ms)
             latest_readings = model.tick(timestamp=now_ms, local_decision=True)
+            field_feedback.annotate(latest_readings)
             latest_readings = {
                 device: samples
                 for device, samples in latest_readings.items()
@@ -563,19 +579,26 @@ def run(
                 if now_ms - last_seen > 300_000
             }
             if client is not None:
+                client.poll_telemetry_delivery()
                 for peer_id in stale_peers:
                     for device in peer_device_map.get(peer_id, ()):
                         if device in connected_devices:
                             client.disconnect_device(device)
                             connected_devices.remove(device)
                 if latest_readings:
-                    client.publish_telemetry(latest_readings)
+                    publish_snapshot()
                 diagnostic = model.gateway_health(
                     len(connected_devices),
                     client.buffer_depth,
                     client.expired_buffer_count,
                 )
                 diagnostic["values"]["clockReady"] = is_clock_ready()
+                diagnostic["values"].update(
+                    telemetryPublishCount=client.telemetry_publish_count,
+                    telemetryPubackCount=client.telemetry_puback_count,
+                    telemetryDeliveryFailures=client.telemetry_delivery_failures,
+                    lastTelemetryPubackMs=client.last_telemetry_puback_ms,
+                )
                 client.publish_gateway_telemetry(diagnostic)
             analytics.submit(
                 {"ts": now_ms, "readings": latest_readings, "systemMode": model.site.system_mode}

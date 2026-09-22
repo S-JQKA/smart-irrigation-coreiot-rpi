@@ -71,7 +71,16 @@
     "gatewayScheduleConfigAck": "enum:NONE|ACCEPTED|REJECTED",
     "gatewayScheduleConfigReason": "string",
     "cycleWaterLiters": "number:liters>=0",
-    "dailyWaterLiters": "number:liters>=0"
+    "dailyWaterLiters": "number:liters>=0",
+    "fieldConfigStatus": "enum:WAITING|LOCAL_ONLY|APPLIED|REJECTED",
+    "fieldConfigReason": "string",
+    "fieldConfigRequested": "object:latest requested Field attributes",
+    "fieldConfigEffective": "object:nine effective Field attributes",
+    "fieldConfigReceivedAt": "integer:epochMs|0",
+    "fieldConfigAppliedAt": "integer:epochMs|0",
+    "maxWaterPerCycle": "number:liters>0",
+    "maxWaterPerDay": "number:liters>=maxWaterPerCycle",
+    "maxDurationSec": "integer:seconds>=1"
   },
   "waterMeterTelemetry": {
     "pulseCounter": "integer:cumulative>=0",
@@ -103,7 +112,11 @@
     "sensorDataOrigin": "enum:SYNTHETIC|PHYSICAL",
     "actuatorBackend": "enum:SIM|LED|RELAY",
     "evidenceClass": "enum:SIM+PLATFORM|HIL|HARDWARE-UNVERIFIED|FINAL-HARDWARE",
-    "clockReady": "boolean"
+    "clockReady": "boolean",
+    "telemetryPublishCount": "integer>=0",
+    "telemetryPubackCount": "integer>=0",
+    "telemetryDeliveryFailures": "integer>=0",
+    "lastTelemetryPubackMs": "integer:epochMs|0"
   },
   "fieldAttributes": {
     "criticalMoisture": 15,
@@ -111,7 +124,10 @@
     "targetMoisture": 55,
     "maxMoistureThreshold": 70,
     "floodMoistureThreshold": 85,
-    "controlMode": "DISABLED"
+    "controlMode": "DISABLED",
+    "maxWaterPerCycle": 1000,
+    "maxWaterPerDay": 5000,
+    "maxDurationSec": 600
   },
   "gatewayConfiguration": {
     "maxWaterPerCycle": 1000,
@@ -171,6 +187,8 @@
     "HARDWARE_TWO_FIELD": "starts as HARDWARE-UNVERIFIED; FINAL-HARDWARE requires explicit finalHardwareVerified after calibration and safety evidence"
   },
   "invariants": [
+    "Field configuration feedback is published on its Smart Valve; saved attributes alone are not Gateway application proof",
+    "MQTT PUBACK is transport acknowledgement, not proof of CoreIoT timeseries persistence",
     "CoreIoT never creates actualValveState or pumpState from an RPC result",
     "Only one current-snapshot soil aggregation triggers a recommendation",
     "Environment and water-meter updates store context but do not trigger control",

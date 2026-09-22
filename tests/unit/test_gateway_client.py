@@ -60,6 +60,11 @@ class _SuccessfulPublish:
         return True
 
 
+class _MissingPuback(_SuccessfulPublish):
+    def is_published(self) -> bool:
+        return False
+
+
 class _ReconnectMqttClient:
     def __init__(self) -> None:
         self.published: list[tuple[str, str, int]] = []
@@ -167,6 +172,7 @@ class GatewayClientStartTest(unittest.TestCase):
 
     def test_reconnect_drops_expired_buffer_and_replays_fresh_payload(self) -> None:
         mqtt_client = _ReconnectMqttClient()
+        fresh = json.dumps({'valve': [{'ts': 995_000, 'values': {'state': 'OFF'}}]})
         client = GatewayClient.__new__(GatewayClient)
         client.settings = GatewaySettings(
             host="coreiot.test",
@@ -176,7 +182,7 @@ class GatewayClientStartTest(unittest.TestCase):
         client._client = mqtt_client
         client._buffer = deque([
             ("v1/gateway/telemetry", "old", 1, 980_000),
-            ("v1/gateway/telemetry", "fresh", 1, 995_000),
+            ("v1/gateway/telemetry", fresh, 1, 995_000),
         ])
         client._lock = threading.Lock()
         client._connected = True
@@ -185,7 +191,7 @@ class GatewayClientStartTest(unittest.TestCase):
         with patch("coreiot.gateway_client.time.time", return_value=1000):
             client._flush_buffer()
 
-        self.assertEqual([("v1/gateway/telemetry", "fresh", 1)], mqtt_client.published)
+        self.assertEqual([("v1/gateway/telemetry", fresh, 1)], mqtt_client.published)
         self.assertEqual(1, client.expired_buffer_count)
 
     def test_shared_attribute_watch_requests_durable_config(self) -> None:
@@ -212,6 +218,36 @@ class GatewayClientStartTest(unittest.TestCase):
             },
             json.loads(payload),
         )
+
+    def test_telemetry_is_split_per_device_and_all_pubacks_are_counted(self) -> None:
+        mqtt_client = _ReconnectMqttClient()
+        client = GatewayClient.__new__(GatewayClient)
+        client._client = mqtt_client
+        client._connected = True
+        client._buffer = deque()
+        client._lock = threading.Lock()
+
+        acknowledged = client.publish_telemetry({
+            "Sensor 1": [{"ts": 1, "values": {"x": 1}}],
+            "Sensor 2": [{"ts": 1, "values": {"x": 2}}],
+        })
+
+        self.assertEqual(2, acknowledged)
+        self.assertEqual(2, client.telemetry_publish_count)
+        self.assertEqual(2, client.telemetry_puback_count)
+        self.assertEqual(0, client.telemetry_delivery_failures)
+        self.assertEqual(2, len(mqtt_client.published))
+        self.assertEqual([{"Sensor 1"}, {"Sensor 2"}],
+                         [set(json.loads(item[1])) for item in mqtt_client.published])
+
+    def test_missing_telemetry_puback_is_a_visible_failure(self) -> None:
+        client = GatewayClient.__new__(GatewayClient)
+        client._publish_or_buffer = lambda *_: _MissingPuback()
+
+        with self.assertRaisesRegex(TimeoutError, "PUBACK missing"):
+            client.publish_telemetry({"Sensor 1": [{"ts": 1, "values": {"x": 1}}]})
+
+        self.assertEqual(1, client.telemetry_delivery_failures)
 
 
 class GatewayClientRpcPolicyTest(unittest.TestCase):

@@ -24,6 +24,7 @@ py -3 implementation/gateway/gateway_runtime.py --config implementation/gateway/
 | control_engine.py | Quyết định từ đầu vào đã kiểm tra |
 | controller_state.py | Topology và trạng thái được xác nhận |
 | configuration.py | Cấu hình và biến môi trường |
+| field_configuration.py | Phản hồi cấu hình từng Field: yêu cầu, hiệu lực, trạng thái và thời điểm |
 | hardware_adapter.py | Kiểu sự kiện, interface phần cứng |
 | uart_espnow_adapter.py | JSONL/CRC, nguồn dữ liệu, sequence và ACK |
 | runtime_state.py | Persistence cho lịch, cấu hình và command ledger |
@@ -43,6 +44,30 @@ Central thực hiện valve-before-pump khi bật, pump-before-valve khi dừng 
 pulsesPerLiterByZone và minimumFlowRateByZone cấu hình riêng từng nhánh. Mẫu flow đầu sau Central reboot thiết lập mốc, không cộng bộ đếm cũ vào chu kỳ mới. Tổng nước trong Gateway là RAM; Gateway restart và khoảng mất liên lạc có thể làm thiếu thống kê. Chưa có bộ đếm nước bền qua mất nguồn.
 
 Analytics mặc định tắt, khi bật chỉ bổ sung telemetry/alarm, không điều khiển. MQTT buffer ở RAM, TTL 900 giây. Lịch/cấu hình/command ledger được lưu nguyên tử dưới SMARTFARM_STATE_DIR.
+
+## Cấu hình dashboard và truyền telemetry
+
+MQTT callback đưa Shared attributes vào hàng đợi tối đa 128 bản tin. Runtime
+áp dụng trong luồng điều khiển và phát `fieldConfigStatus`, `fieldConfigReason`,
+`fieldConfigRequested`, `fieldConfigEffective`, `fieldConfigReceivedAt` và
+`fieldConfigAppliedAt` trên Smart Valve tương ứng ở mỗi tick. Cập nhật không
+hợp lệ giữ cấu hình hiệu lực và thời điểm áp dụng thành công trước đó.
+Khởi động từ cache báo `LOCAL_ONLY`; chưa có cấu hình hợp lệ báo `WAITING`.
+`APPLIED` chỉ xuất hiện sau một yêu cầu cloud hợp lệ trong phiên hiện tại.
+
+Runtime dùng `submit_telemetry`: đưa bản tin QoS 1 vào hàng đợi mà không chờ
+PUBACK. Mỗi tick quan sát xác nhận bằng `poll_telemetry_delivery`; quá hạn
+5 giây hoặc hàng đợi theo dõi đầy được tính vào `telemetryDeliveryFailures`,
+không ném timeout vào vòng điều khiển. Hàng đợi theo dõi và MQTT có giới hạn
+theo `buffer_capacity`. MQTT mất kết nối/lỗi gửi được đệm theo TTL để replay.
+`telemetryPublishCount` đếm lần submit, `telemetryPubackCount` đếm xác nhận
+đã quan sát, `lastTelemetryPubackMs` ghi mốc xác nhận gần nhất. Quá hạn theo
+dõi không khẳng định bản tin sẽ không được broker nhận muộn hơn.
+
+`publish_telemetry` có chờ PUBACK được giữ cho runner chẩn đoán hữu hạn;
+không gọi API này từ vòng điều khiển hoặc callback reconnect sản phẩm.
+PUBACK chỉ xác nhận MQTT; cần timestamp/giá trị mới trên CoreIoT để xác nhận
+lưu dữ liệu. Cách gắn widget: [hướng dẫn Field selector](../coreiot/widgets/field_selector/README.md).
 
 ## Kiểm chứng
 
