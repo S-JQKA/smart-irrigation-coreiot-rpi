@@ -4,4 +4,4 @@
 - firmware/smartfarm/: Sensor Node, Bridge và Central Controller.
 - coreiot/: bộ artifact hiện hành và hướng dẫn thiết lập; schema version nằm trong manifest.
 
-Công cụ phát triển SIM/HIL được giữ riêng trong local_dev, không cần để chạy sản phẩm.
+Các thành phần trên không phụ thuộc vào bộ công cụ mô phỏng/HIL.

@@ -6,6 +6,6 @@
 4. [Giao thức và dữ liệu](protocol.md).
 5. [Phạm vi kiểm chứng và giới hạn](validation.md).
 
-Đây là tài liệu đi kèm source sản phẩm. SRS, thiết kế cũ, audit và kế hoạch
-nội bộ được lưu riêng trên máy. Báo cáo/slide sẽ phát hành riêng sau khi đồng
-bộ file map, pin map và ranh giới evidence với source này.
+Các tài liệu mô tả mã nguồn và cấu hình tham chiếu trong repository.
+Bắt đầu với kiến trúc, sau đó đọc hướng dẫn phần cứng và triển khai.
+Phạm vi kiểm chứng nêu các kết quả đã có và những giới hạn cần lưu ý khi sử dụng.

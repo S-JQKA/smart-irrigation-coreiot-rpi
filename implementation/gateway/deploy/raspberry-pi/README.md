@@ -1,7 +1,7 @@
 # Raspberry Pi deployment
 
-Baseline: Raspberry Pi OS Lite 64-bit. Raspberry Pi này là Gateway do sinh viên
-xây dựng, không phải ThingsBoard/CoreIoT Edge.
+Hệ điều hành tham chiếu: Raspberry Pi OS Lite 64-bit. Gateway là ứng dụng
+Python của dự án, không sử dụng ThingsBoard/CoreIoT Edge.
 
 ## Cài đặt
 
@@ -23,7 +23,7 @@ journalctl -u smartfarm-gateway -f
 timedatectl show -p NTPSynchronized --value
 ```
 
-Runtime final yêu cầu NTP. Khi đồng hồ chưa sẵn sàng, Gateway vẫn nhận OFF và
+Gateway yêu cầu đồng bộ thời gian bằng NTP. Khi đồng hồ chưa sẵn sàng, Gateway vẫn nhận OFF và
 thực hiện safety nhưng từ chối Manual ON/lịch có timestamp. State nhỏ nằm dưới
 `/var/lib/smartfarm-gateway`; MQTT telemetry buffer vẫn chỉ ở RAM.
 

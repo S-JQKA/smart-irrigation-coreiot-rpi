@@ -1,6 +1,8 @@
 # SmartFarm tests
 
-Chạy từ repository root, không cần local_dev:
+Chạy từ thư mục gốc repository sau khi cài dependency Python. Các lệnh dưới
+đây dùng Python Launcher trên Windows; trên Linux, thay `py -3` bằng `python`
+trong môi trường ảo đã kích hoạt:
 
 ```powershell
 py -3 -m unittest discover -s tests/unit -v
@@ -14,6 +16,8 @@ Các test cấu hình kiểm tra phản hồi APPLIED/REJECTED theo Field, cấu
 hiệu lực, quota và khôi phục cache. Test telemetry dùng broker double trả
 ACK muộn/mất ACK và lỗi transport, kiểm tra runtime không chờ PUBACK.
 Test widget cần Node.js, dùng DOM và dịch vụ CoreIoT giả lập; không gọi tenant.
-Regression đóng gói xác nhận HTML/CSS/JS và test CJS có trong danh sách bản nộp.
+Regression đóng gói xác nhận HTML/CSS/JS và test CJS có trong gói mã nguồn.
 
-Bộ test dùng mô hình tưới và HIL cũ nằm trên máy ở local_dev/tests, chạy bằng `py -3 local_dev/run_tests.py`. Không suy diễn test/build thành nghiệm thu cảm biến, tải nước hoặc Pi.
+Các kiểm thử trên xác nhận hành vi phần mềm với đầu vào được kiểm soát.
+Kết quả test và build không thay thế kiểm chứng với cảm biến, tải tưới và
+cấu hình Raspberry Pi thực tế; xem [phạm vi kiểm chứng](../docs/validation.md).

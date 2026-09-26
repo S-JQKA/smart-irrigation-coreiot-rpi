@@ -80,8 +80,10 @@ gửi flow/pulse. origin=P tránh nhầm profile, không xác thực mật mã.
 
 ## Phạm vi kiểm chứng
 
-Firmware mới chưa được nạp lên board hoặc thử với cảm biến/tải thật trong đợt
-refactor này. Evidence HIL cũ vẫn thuộc firmware nội bộ cũ.
+Firmware đọc cảm biến trong repository chưa được xác nhận hoạt động với
+cảm biến và tải tưới thật. Các minh chứng HIL được công bố sử dụng firmware
+HIL khác; chúng không xác nhận hoạt động vật lý của phiên bản này. Xem
+[phạm vi kiểm chứng](../../../docs/validation.md).
 
 Tài liệu driver: [Sensirion SHT3x](https://admin.sensirion.com/media/documents/213E6A3B/63A5A569/Datasheet_SHT3x_DIS.pdf),
 [ROHM BH1750](https://www.mouser.com/datasheet/2/348/bh1750fvi-e-186247.pdf),

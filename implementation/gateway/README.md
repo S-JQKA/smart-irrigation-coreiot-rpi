@@ -71,4 +71,9 @@ lưu dữ liệu. Cách gắn widget: [hướng dẫn Field selector](../coreiot
 
 ## Kiểm chứng
 
-Xem tests/README.md, deploy/raspberry-pi/README.md và implementation/firmware/smartfarm/README.md. SIM/HIL ở local_dev trên máy phát triển, sử dụng lõi controller sản phẩm; sản phẩm không import local_dev. Giữ finalHardwareVerified=false cho tới khi nghiệm thu phần cứng đầy đủ. Chưa flash hoặc xác nhận hoạt động với cảm biến/relay thật trong đợt refactor này.
+Xem [hướng dẫn kiểm thử](../../tests/README.md),
+[triển khai Raspberry Pi](deploy/raspberry-pi/README.md) và
+[firmware](../firmware/smartfarm/README.md).
+Gateway không phụ thuộc vào bộ công cụ mô phỏng/HIL. Hoạt động với cảm biến,
+relay, van và bơm thật vẫn cần được kiểm chứng trên cấu hình triển khai;
+xem [phạm vi kiểm chứng](../../docs/validation.md).

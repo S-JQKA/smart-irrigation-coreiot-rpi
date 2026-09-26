@@ -1,3 +1,5 @@
 # SmartFarm firmware
 
-Mã sản phẩm tại [smartfarm](smartfarm/README.md): Sensor Field 1, Sensor Field 2, Bridge và Central Controller. Firmware HIL/LED cùng diagnostics cũ được giữ dưới local_dev trên máy phát triển và không thuộc bản nộp.
+Mã nguồn tại [smartfarm](smartfarm/README.md) gồm bốn target: Sensor Field 1,
+Sensor Field 2, Bridge và Central Controller. Hướng dẫn này cung cấp cấu hình
+board, sơ đồ chân, quy trình biên dịch và hiệu chuẩn cảm biến.

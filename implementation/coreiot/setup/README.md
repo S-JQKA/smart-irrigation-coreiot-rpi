@@ -4,7 +4,7 @@
 
 Sao lưu tenant trước khi triển khai. Tenant mới dùng Smart Irrigation Template
 làm nền. Tenant đã dùng cần đối chiếu theo tên, tránh tạo profile/chain trùng.
-Việc tổ chức repository không tự import artifact lên tenant.
+Các bước dưới đây cần được thực hiện trên tenant triển khai.
 
 1. Đọc [migration manifest](../manifests/migration_manifest.json), import
    7 chain theo importOrder. Giữ Root Rule Chain có sẵn của nền tảng.
@@ -34,12 +34,15 @@ Lịch CoreIoT cũ không phải nguồn trigger được kiểm chứng của h
 
 Dựng dashboard từ template với hai Field, soil/môi trường/lưu lượng,
 valve/pump, alarm, Irrigation Tasks và Gateway Schedules. Bộ source chưa có
-export dashboard hoàn chỉnh có thể import sang mọi tenant.
+export dashboard hoàn chỉnh có thể import sang mọi tenant. Smart Irrigation
+Template là điều kiện đầu vào trên tenant, không được phân phối trong repository.
+Nếu tenant chưa có template này, cần chuẩn bị dashboard và các entity tương ứng
+trước khi gắn widget; bản clone chỉ cung cấp mã widget và cấu hình bên dưới.
 
 Widget Cấu hình tưới hiện hành có source HTML/CSS/JavaScript tại
 [field_selector](../widgets/field_selector/README.md). Hướng dẫn này liệt kê
-hai datasource Smart Valve và các key phản hồi bắt buộc. Runtime sản phẩm
-phát `fieldConfig*`; không cần chạy công cụ HIL để nhận phản hồi cấu hình.
+hai datasource Smart Valve và các key phản hồi bắt buộc. Gateway phát
+`fieldConfig*` để xác nhận cấu hình đã nhận và giá trị đang có hiệu lực.
 
 Manual RPC cần commandId duy nhất, source=MANUAL, requestedAt là thời điểm
 hiện tại, ttlSeconds và runDurationSeconds cho ON; xem

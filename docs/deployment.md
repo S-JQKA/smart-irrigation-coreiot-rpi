@@ -18,5 +18,6 @@ riêng. Các biến môi trường: SMARTFARM_SERIAL_PORT, SMARTFARM_STATE_DIR,
 COREIOT_MQTT_HOST, COREIOT_MQTT_PORT, COREIOT_MQTT_TLS, COREIOT_GATEWAY_TOKEN.
 Không đưa token hoặc cấu hình triển khai riêng vào repository.
 
-Đây là hướng dẫn mục tiêu, chưa phải biên bản nghiệm thu Pi. Không đổi
-finalHardwareVerified thành true chỉ vì build/test pass.
+Đây là quy trình triển khai tham chiếu. Cấu hình thực tế cần được kiểm tra
+về khởi động dịch vụ, phục hồi sau reboot và trạng thái đầu ra an toàn.
+Kết quả build/test không thay thế các bước kiểm chứng này.
